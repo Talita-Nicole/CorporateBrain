@@ -1,0 +1,14 @@
+streamlit==1.58.0
+python-dotenv==1.2.2
+langchain==0.3.30
+langchain-core==0.3.86
+langchain-community==0.3.31
+langchain-openai==0.3.35
+langchain-chroma==0.2.6
+langchain-text-splitters==0.3.11
+openai==2.42.0
+pydantic-settings==2.14.1
+chromadb==1.5.9
+pypdf==6.13.2
+docx2txt==0.9
+langdetect==1.0.9
