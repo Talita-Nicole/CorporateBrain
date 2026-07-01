@@ -12,10 +12,9 @@ logger = logging.getLogger(__name__)
 HISTORY_KEY = "chat_history"
 
 
-def render_chat(answer_use_case: AnswerQuestion) -> None:
-    """Render the chat transcript, the clear button and handle new input."""
+def render_chat(answer_use_case: AnswerQuestion, company_name: str) -> None:
     _initialize_history()
-    _render_clear_button()
+    _render_header(company_name)
     _render_transcript()
     _handle_user_input(answer_use_case)
 
@@ -25,10 +24,19 @@ def _initialize_history() -> None:
         st.session_state[HISTORY_KEY] = []
 
 
-def _render_clear_button() -> None:
-    if st.button("Clear conversation"):
-        st.session_state[HISTORY_KEY] = []
-        st.rerun()
+def _render_header(company_name: str) -> None:
+    col_title, col_btn = st.columns([6, 1])
+    with col_title:
+        st.markdown(
+            f'<div class="cb-page-title">Ask {company_name}</div>'
+            '<div class="cb-page-subtitle">Ask questions about your indexed documents.</div>',
+            unsafe_allow_html=True,
+        )
+    with col_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Clear", use_container_width=True):
+            st.session_state[HISTORY_KEY] = []
+            st.rerun()
 
 
 def _render_transcript() -> None:
@@ -38,7 +46,7 @@ def _render_transcript() -> None:
 
 
 def _handle_user_input(answer_use_case: AnswerQuestion) -> None:
-    question = st.chat_input("Ask a question about your documents")
+    question = st.chat_input("Ask a question about your documents…")
     if not question:
         return
 
@@ -47,7 +55,7 @@ def _handle_user_input(answer_use_case: AnswerQuestion) -> None:
         st.markdown(question)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+        with st.spinner("Thinking…"):
             try:
                 result = answer_use_case.execute(question=question, history=history)
             except Exception as error:  # noqa: BLE001
@@ -66,7 +74,8 @@ def _handle_user_input(answer_use_case: AnswerQuestion) -> None:
 def _render_sources(sources: list[Source]) -> None:
     if not sources:
         return
-    with st.expander("Sources"):
+    with st.expander(f"📎 {len(sources)} source(s)"):
         for source in sources:
-            st.markdown(f"**{source.document_name}**")
+            st.markdown(f"**[{source.citation_number}] {source.document_name}**")
             st.caption(source.snippet)
+            st.divider()

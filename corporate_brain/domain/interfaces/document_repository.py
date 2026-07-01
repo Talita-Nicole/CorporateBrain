@@ -21,3 +21,7 @@ class DocumentRepository(ABC):
     @abstractmethod
     def list_indexed_sources(self) -> list[str]:
         """Return the distinct source file names currently indexed."""
+
+    @abstractmethod
+    def delete_by_source(self, source: str) -> None:
+        """Remove all chunks belonging to the given source file."""

@@ -43,3 +43,7 @@ class ChromaDocumentRepository(DocumentRepository):
             if metadata and metadata.get("source")
         }
         return sorted(sources)
+
+    def delete_by_source(self, source: str) -> None:
+        self._store.delete(where={"source": source})
+        logger.info("Deleted all chunks for source '%s' from %s", source, COLLECTION_NAME)

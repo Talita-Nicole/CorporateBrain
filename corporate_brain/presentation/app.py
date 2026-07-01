@@ -16,21 +16,29 @@ from infrastructure.config.azure_settings import AzureSettings
 from infrastructure.config.github_models_settings import GitHubModelsSettings
 from infrastructure.llm_errors import LLMServiceError
 from infrastructure.loaders.loader_factory import LangChainDocumentLoader
+from presentation.components.branding import load_brand_config
 from presentation.components.chat import render_chat
 from presentation.components.sidebar import render_sidebar
+from presentation.components.styles import inject_styles
 
 logger = logging.getLogger(__name__)
 
-PAGE_TITLE = "Knowledge Base"
 DEFAULT_PERSIST_DIR = "./chroma_db"
 GITHUB_PROVIDER = "github"
 AZURE_PROVIDER = "azure"
 
 
 def run() -> None:
-    """Render the application; the entrypoint configures env and logging first."""
-    st.set_page_config(page_title=PAGE_TITLE, page_icon="📚", layout="wide")
-    st.title(PAGE_TITLE)
+    brand = load_brand_config()
+
+    st.set_page_config(
+        page_title=brand.company_name,
+        page_icon="🧠",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+    inject_styles(brand.primary_color)
 
     chat_provider = os.getenv("LLM_PROVIDER", AZURE_PROVIDER).strip().lower()
     embedding_provider = os.getenv("EMBEDDING_PROVIDER", AZURE_PROVIDER).strip().lower()
@@ -58,8 +66,8 @@ def run() -> None:
         st.error(str(error))
         return
 
-    render_sidebar(ingest_use_case, repository)
-    render_chat(answer_use_case)
+    render_sidebar(ingest_use_case, repository, brand)
+    render_chat(answer_use_case, brand.company_name)
 
 
 @st.cache_resource(show_spinner=False)
