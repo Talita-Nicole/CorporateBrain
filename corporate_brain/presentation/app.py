@@ -33,7 +33,7 @@ def run() -> None:
 
     st.set_page_config(
         page_title=brand.company_name,
-        page_icon="🧠",
+        page_icon=brand.logo_path or "🧠",
         layout="wide",
         initial_sidebar_state="expanded",
     )

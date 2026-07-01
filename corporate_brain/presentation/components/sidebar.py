@@ -44,7 +44,9 @@ def render_sidebar(
 
 def _render_brand_header(brand: BrandConfig) -> None:
     if brand.logo_base64:
-        logo_html = f'<img src="data:image/png;base64,{brand.logo_base64}" alt="logo">'
+        logo_html = (
+            f'<img src="data:{brand.logo_mime_type};base64,{brand.logo_base64}" alt="logo">'
+        )
     else:
         logo_html = '<span style="font-size:1.6rem">🧠</span>'
 

@@ -16,6 +16,9 @@ __pycache__/
 # Vector store / database
 chroma_db/
 
+# Local branding assets (company logo, not for version control)
+corporate_brain/assets/
+
 # IDE and OS
 .vscode/
 .idea/
