@@ -44,6 +44,11 @@ class ChromaDocumentRepository(DocumentRepository):
         }
         return sorted(sources)
 
+    def sample_texts(self, limit: int, sources: list[str] | None = None) -> list[str]:
+        where = {"source": {"$in": sources}} if sources else None
+        stored = self._store.get(include=["documents"], limit=limit, where=where)
+        return [text for text in (stored.get("documents") or []) if text]
+
     def delete_by_source(self, source: str) -> None:
         self._store.delete(where={"source": source})
         logger.info("Deleted all chunks for source '%s' from %s", source, COLLECTION_NAME)

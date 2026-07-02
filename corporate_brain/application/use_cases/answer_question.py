@@ -18,6 +18,9 @@ RETRIEVER_TOP_K = 4
 SNIPPET_MAX_LENGTH = 300
 ENGLISH_LANGUAGE_CODE = "en"
 ENGLISH_CONFIDENCE_THRESHOLD = 0.85
+SUGGESTIONS_MARKER = "###FOLLOW_UP###"
+MAX_SUGGESTIONS = 3
+STARTER_SAMPLE_SIZE = 8
 
 
 @dataclass
@@ -35,6 +38,7 @@ class AnswerResult:
 
     answer: str
     sources: list[Source]
+    suggested_questions: list[str]
 
 
 class AnswerQuestion:
@@ -77,13 +81,56 @@ class AnswerQuestion:
         )
         chat_model = self._language_model.as_langchain_chat_model()
         response = chat_model.invoke(messages)
-        answer = str(response.content)
+        raw_answer = str(response.content)
 
+        # Split off the follow-up block before renumbering so the ``[n]`` regex
+        # in ``_renumber_citations`` only ever touches the answer body.
+        answer, suggested_questions = self._split_suggestions(raw_answer)
         answer, sources = self._renumber_citations(answer, numbered_docs)
         logger.info(
-            "Answered question in %s; %d source(s) cited", answer_language, len(sources)
+            "Answered question in %s; %d source(s) cited, %d suggestion(s)",
+            answer_language,
+            len(sources),
+            len(suggested_questions),
         )
-        return AnswerResult(answer=answer, sources=sources)
+        return AnswerResult(
+            answer=answer,
+            sources=sources,
+            suggested_questions=suggested_questions,
+        )
+
+    def suggest_starters(self, selected_sources: list[str] | None = None) -> list[str]:
+        """Propose starter questions from the indexed documents, with no chat yet.
+
+        Samples a handful of chunks (scoped to ``selected_sources`` when given)
+        and asks the model for questions a new user might open with. Returns an
+        empty list when nothing is indexed, so the UI shows no chips.
+        """
+        texts = self._repository.sample_texts(
+            limit=STARTER_SAMPLE_SIZE, sources=selected_sources or None
+        )
+        if not texts:
+            return []
+
+        context = "\n\n".join(texts)
+        messages = [
+            SystemMessage(
+                content=(
+                    "You are a corporate knowledge assistant. Based only on the "
+                    "document excerpts below, propose "
+                    f"{MAX_SUGGESTIONS} questions a new user might ask to start "
+                    "exploring this knowledge base. Write them in the same "
+                    "language as the excerpts. Output only the questions, one "
+                    "per line, each starting with '- ', with no preamble."
+                )
+            ),
+            HumanMessage(content=f"Document excerpts:\n{context}"),
+        ]
+        chat_model = self._language_model.as_langchain_chat_model()
+        response = chat_model.invoke(messages)
+        starters = self._parse_question_lines(str(response.content))
+        logger.info("Generated %d starter suggestion(s)", len(starters))
+        return starters
 
     @staticmethod
     def _detect_answer_language(question: str) -> str:
@@ -121,7 +168,16 @@ class AnswerQuestion:
             "Each excerpt is prefixed with a number like [1], [2], etc. "
             "When you use information from an excerpt, cite its number inline, "
             "e.g. 'According to the document [1]...'. Only cite numbers that "
-            "appear in the context."
+            "appear in the context.\n\n"
+            f"After every answer, propose {MAX_SUGGESTIONS} follow-up questions "
+            "the user is likely to ask next. Ground them in the current "
+            "question and the provided context; when the current question is "
+            "narrow, you may suggest broader questions about the same "
+            f"documents. Add a line containing exactly '{SUGGESTIONS_MARKER}' "
+            f"and then the {MAX_SUGGESTIONS} questions, one per line, each "
+            f"starting with '- ', written in {answer_language}, without "
+            "citation markers. Only omit the marker when the context is empty "
+            "or entirely unrelated to the question."
         )
         messages: list = [SystemMessage(content=system_prompt)]
         messages.extend(cls._history_to_messages(history))
@@ -144,6 +200,32 @@ class AnswerQuestion:
             elif message.role == "assistant":
                 converted.append(AIMessage(content=message.content))
         return converted
+
+    @staticmethod
+    def _parse_question_lines(text: str) -> list[str]:
+        """Extract up to ``MAX_SUGGESTIONS`` questions from a bullet/numbered list."""
+        questions: list[str] = []
+        for line in text.splitlines():
+            question = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
+            if question:
+                questions.append(question)
+            if len(questions) == MAX_SUGGESTIONS:
+                break
+        return questions
+
+    @classmethod
+    def _split_suggestions(cls, raw_answer: str) -> tuple[str, list[str]]:
+        """Separate the answer body from the trailing follow-up block.
+
+        The model is asked to append ``SUGGESTIONS_MARKER`` followed by up to
+        ``MAX_SUGGESTIONS`` bullet questions. When the marker is absent the
+        answer is returned unchanged with no suggestions (no generic fallback).
+        """
+        if SUGGESTIONS_MARKER not in raw_answer:
+            return raw_answer.strip(), []
+
+        answer_part, _, suggestions_part = raw_answer.partition(SUGGESTIONS_MARKER)
+        return answer_part.strip(), cls._parse_question_lines(suggestions_part)
 
     @classmethod
     def _renumber_citations(

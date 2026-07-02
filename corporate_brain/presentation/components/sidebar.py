@@ -8,6 +8,7 @@ import streamlit as st
 
 from application.use_cases.ingest_document import IngestDocument
 from domain.interfaces.document_repository import DocumentRepository
+from infrastructure.config.app_settings import load_app_settings, save_app_settings
 from presentation.components.branding import BrandConfig
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,8 @@ SUPPORTED_TYPES = ["pdf", "docx", "txt", "csv"]
 PROCESSED_FILES_KEY = "processed_files"
 PENDING_DELETE_KEY = "pending_delete_source"
 SELECTED_SOURCES_KEY = "selected_sources"
+SOURCE_SELECTION_ENABLED_KEY = "enable_source_selection"
+SETTINGS_MODAL_OPEN_KEY = "settings_modal_open"
 
 _FILE_ICONS = {"pdf": "📄", "docx": "📝", "txt": "📃", "csv": "📊"}
 
@@ -28,19 +31,29 @@ def render_sidebar(
     with st.sidebar:
         _render_brand_header(brand)
 
-        st.markdown('<div class="cb-section-label">Add sources</div>', unsafe_allow_html=True)
-        uploaded_files = st.file_uploader(
-            "Upload documents",
-            type=SUPPORTED_TYPES,
-            accept_multiple_files=True,
-            label_visibility="collapsed",
-        )
-        if uploaded_files:
-            _ingest_new_files(uploaded_files, ingest_use_case)
+        with st.container(key="cb_sidebar_scroll"):
+            st.markdown(
+                '<div class="cb-section-label">Add sources</div>', unsafe_allow_html=True
+            )
+            uploaded_files = st.file_uploader(
+                "Upload documents",
+                type=SUPPORTED_TYPES,
+                accept_multiple_files=True,
+                label_visibility="collapsed",
+            )
+            if uploaded_files:
+                _ingest_new_files(uploaded_files, ingest_use_case)
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<div class="cb-section-label">Indexed sources</div>', unsafe_allow_html=True)
-        _render_source_list(repository)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                '<div class="cb-section-label">Indexed sources</div>', unsafe_allow_html=True
+            )
+            _render_source_list(repository)
+
+        _render_settings_trigger()
+
+    if st.session_state.get(SETTINGS_MODAL_OPEN_KEY):
+        _render_settings_modal()
 
 
 def _render_brand_header(brand: BrandConfig) -> None:
@@ -66,14 +79,52 @@ def _source_checkbox_key(source: str) -> str:
     return f"select_{source}"
 
 
+def _render_settings_trigger() -> None:
+    with st.container(key="cb_settings_bar"):
+        if st.button("⚙️ Settings", key="open_settings", use_container_width=True):
+            st.session_state[SETTINGS_MODAL_OPEN_KEY] = True
+            st.rerun()
+
+
+def _close_settings_modal() -> None:
+    st.session_state[SETTINGS_MODAL_OPEN_KEY] = False
+
+
+@st.dialog("Settings", on_dismiss=_close_settings_modal)
+def _render_settings_modal() -> None:
+    settings = load_app_settings()
+    enabled = st.checkbox(
+        "Select documents to search",
+        value=settings.enable_source_selection,
+        key=SOURCE_SELECTION_ENABLED_KEY,
+        help="When enabled, you can pick which indexed documents are searched.",
+    )
+
+    col_cancel, col_save = st.columns(2, gap="small")
+    with col_cancel:
+        if st.button("Cancel", key="cancel_settings", use_container_width=True):
+            _close_settings_modal()
+            st.rerun()
+    with col_save:
+        if st.button("Save", key="save_settings", type="primary", use_container_width=True):
+            settings.enable_source_selection = enabled
+            save_app_settings(settings)
+            if not enabled:
+                st.session_state[SELECTED_SOURCES_KEY] = set()
+            _close_settings_modal()
+            st.rerun()
+
+
 def _render_source_list(repository: DocumentRepository) -> None:
     sources = repository.list_indexed_sources()
     if not sources:
         st.caption("No documents indexed yet.")
         return
 
-    _prune_stale_checkbox_state(sources)
-    _render_select_all(sources)
+    selection_enabled = load_app_settings().enable_source_selection
+    if selection_enabled:
+        _prune_stale_checkbox_state(sources)
+        _render_select_all(sources)
 
     pending: str | None = st.session_state.get(PENDING_DELETE_KEY)
 
@@ -82,15 +133,20 @@ def _render_source_list(repository: DocumentRepository) -> None:
         icon = _FILE_ICONS.get(ext, "📎")
 
         with st.container(key=f"cb_src_row_{index}"):
-            col_check, col_name, col_btn = st.columns([1, 5, 1], vertical_alignment="center")
-            with col_check:
-                st.checkbox(
-                    source,
-                    key=_source_checkbox_key(source),
-                    on_change=_on_source_toggle,
-                    args=(sources,),
-                    label_visibility="collapsed",
+            if selection_enabled:
+                col_check, col_name, col_btn = st.columns(
+                    [1, 5, 1], vertical_alignment="center"
                 )
+                with col_check:
+                    st.checkbox(
+                        source,
+                        key=_source_checkbox_key(source),
+                        on_change=_on_source_toggle,
+                        args=(sources,),
+                        label_visibility="collapsed",
+                    )
+            else:
+                col_name, col_btn = st.columns([6, 1], vertical_alignment="center")
             with col_name:
                 st.markdown(
                     f'<div class="cb-doc-row"><span class="cb-doc-icon">{icon}</span>'
@@ -105,9 +161,12 @@ def _render_source_list(repository: DocumentRepository) -> None:
         if pending == source:
             _render_delete_confirmation(repository, source)
 
-    _persist_selection(sources)
-    if not _selected_from_state(sources):
-        st.caption("No source selected — searching all documents.")
+    if selection_enabled:
+        _persist_selection(sources)
+        if not _selected_from_state(sources):
+            st.caption("No source selected — searching all documents.")
+    else:
+        st.session_state[SELECTED_SOURCES_KEY] = set()
 
 
 def _render_select_all(sources: list[str]) -> None:
@@ -194,15 +253,15 @@ def _ingest_new_files(uploaded_files, ingest_use_case: IngestDocument) -> None:
     for uploaded_file in uploaded_files:
         if uploaded_file.name in processed:
             continue
-        with st.spinner(f"Indexing {uploaded_file.name}…"):
+        with st.spinner(f"Uploading {uploaded_file.name}…"):
             try:
-                chunk_count = _ingest_single_file(uploaded_file, ingest_use_case)
+                _ingest_single_file(uploaded_file, ingest_use_case)
             except Exception as error:  # noqa: BLE001
                 logger.exception("Failed to ingest %s", uploaded_file.name)
                 st.error(f"Failed to index {uploaded_file.name}: {error}")
                 continue
         processed.add(uploaded_file.name)
-        st.success(f"✓ {uploaded_file.name} ({chunk_count} chunks)")
+        st.toast(f"✓ {uploaded_file.name} uploaded", icon="✅")
 
 
 def _ingest_single_file(uploaded_file, ingest_use_case: IngestDocument) -> int:

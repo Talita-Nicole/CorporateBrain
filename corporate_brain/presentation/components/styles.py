@@ -17,15 +17,88 @@ def inject_styles(primary_color: str) -> None:
 [data-testid="stSidebar"] {{
   border-right: 1px solid var(--brand-dim);
 }}
+/* Streamlit ships a fixed 60px sidebar header (``stSidebarHeader``) that also
+   hosts the collapse ("<<") button, then renders app content below it in
+   ``stSidebarUserContent``. That stacks the brand header under a tall empty
+   strip. Collapse the header to a compact 44px row and pull the content up to
+   overlap it, so the brand header (logo + name) lands on the SAME axis as the
+   "<<" button — a single compact header, Claude-style.
+   ``position/z-index`` keep the header (and its button) painted above the
+   pulled-up content; without this the content covers the button and the
+   collapse control stops responding to clicks. The 13px top padding centres the
+   button on the logo's row; -52px is tuned so the logo top clears the viewport
+   edge (~8px) while leaving ~14px down to the first section. */
+[data-testid="stSidebarHeader"] {{
+  height: 44px !important;
+  min-height: 44px !important;
+  padding-top: 13px !important;
+  padding-bottom: 0 !important;
+  position: relative !important;
+  z-index: 10 !important;
+}}
+[data-testid="stSidebarUserContent"] {{
+  margin-top: -52px !important;
+  padding-top: 0 !important;
+  /* The -52px pull lifts this box's top to ~-8px (44px header − 52px). To reach
+     the real viewport bottom the height must span that gap too: 100vh − (−8px)
+     = 100vh + 8px. The old ``100vh − 44px`` stopped ~52px short, leaving the
+     empty strip below the pinned Settings bar. */
+  height: calc(100vh + 8px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+}}
+/* Force EVERY ancestor div of the Settings bar (however many wrappers Streamlit
+   nests between the user content and the block that holds it) to be a
+   full-height flex column. ``:has()`` matches exactly the chain that contains
+   ``st-key-cb_settings_bar``, so the height propagates all the way down and the
+   bar's ``margin-top:auto`` can pin it to the bottom — earlier ``> div``
+   selectors missed the block when nesting was deeper than one level. */
+[data-testid="stSidebarUserContent"] div:has([class*="st-key-cb_settings_bar"]) {{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}}
 
-/* Sidebar header (logo + company name) */
+/* ── Sidebar scrollable content (everything above the pinned Settings bar) ── */
+[class*="st-key-cb_sidebar_scroll"] {{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding-right: 2px;
+}}
+
+/* ── Settings bar, pinned to the bottom of the sidebar ── */
+[class*="st-key-cb_settings_bar"] {{
+  flex: 0 0 auto !important;
+  /* ``margin-top: auto`` pins the bar to the bottom of the flex column even if
+     the scrollable area does not fully fill the height. */
+  margin-top: auto !important;
+  border-top: 1px solid var(--brand-dim);
+  padding: 10px 0 4px 0;
+}}
+[class*="st-key-cb_settings_bar"] button {{
+  justify-content: flex-start !important;
+  background: transparent !important;
+  border: none !important;
+  color: inherit !important;
+  opacity: 0.75;
+  font-size: 0.85rem !important;
+}}
+[class*="st-key-cb_settings_bar"] button:hover {{
+  background: var(--brand-dim) !important;
+  opacity: 1;
+}}
+
+/* Sidebar header (logo + company name). Keep a compact, consistent gap down to
+   the first section ("Add sources"): ~10px below the divider. */
 .cb-brand-header {{
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 0 20px 0;
+  padding: 0 0 10px 0;
   border-bottom: 1px solid var(--brand-dim);
-  margin-bottom: 20px;
+  margin-bottom: 4px;
 }}
 .cb-brand-header img {{
   width: 36px;
@@ -216,6 +289,26 @@ def inject_styles(primary_color: str) -> None:
   background: rgba(128, 128, 128, 0.4) !important;
 }}
 
+/* ── Settings modal buttons (Save / Cancel) ── */
+.st-key-save_settings button {{
+  cursor: pointer;
+  transition: background-color 0.15s ease, filter 0.15s ease;
+}}
+/* Save is a primary button (brand background); darken it ~12% on hover. */
+.st-key-save_settings button:hover {{
+  filter: brightness(0.88);
+}}
+.st-key-cancel_settings button {{
+  background: rgba(128, 128, 128, 0.25) !important;
+  border: none !important;
+  color: inherit !important;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}}
+.st-key-cancel_settings button:hover {{
+  background: rgba(128, 128, 128, 0.4) !important;
+}}
+
 /* ── Chat input ── */
 [data-testid="stChatInput"] textarea {{
   border-color: var(--brand-dim) !important;
@@ -230,6 +323,27 @@ def inject_styles(primary_color: str) -> None:
 ::-webkit-scrollbar-track {{ background: transparent; }}
 ::-webkit-scrollbar-thumb {{ background: var(--brand-dim); border-radius: 10px; }}
 ::-webkit-scrollbar-thumb:hover {{ background: var(--brand); }}
+
+/* ── Main content area ── */
+/* Streamlit's top toolbar (``stHeader``) is a fixed 60px opaque bar that masks
+   scrolled content, and the main column (``stMainBlockContainer``) carries a
+   6rem top padding to clear it. Both left the title floating far from the top.
+   Shrink the toolbar to 44px (still tall enough for the Deploy/menu controls and
+   still opaque, so it keeps masking scroll) and trim the column padding so the
+   title sits just below it. NB: the old ``> .main .block-container`` selector no
+   longer matches modern Streamlit, and the header's 60px is a ``min-height`` (so
+   ``height`` alone is ignored) — both are overridden here. */
+[data-testid="stHeader"] {{
+  height: 44px !important;
+  min-height: 44px !important;
+}}
+[data-testid="stToolbar"] {{
+  min-height: 44px !important;
+  height: 44px !important;
+}}
+[data-testid="stMainBlockContainer"] {{
+  padding-top: 1.75rem !important;
+}}
 
 /* ── Page title ── */
 .cb-page-title {{

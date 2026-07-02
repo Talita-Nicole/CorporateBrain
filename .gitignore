@@ -16,6 +16,9 @@ __pycache__/
 # Vector store / database
 chroma_db/
 
+# Local user preferences (per-deployment, not for version control)
+app_settings.json
+
 # Local branding assets (company logo, not for version control)
 corporate_brain/assets/
 

@@ -23,5 +23,13 @@ class DocumentRepository(ABC):
         """Return the distinct source file names currently indexed."""
 
     @abstractmethod
+    def sample_texts(self, limit: int, sources: list[str] | None = None) -> list[str]:
+        """Return up to ``limit`` chunk texts, optionally scoped to ``sources``.
+
+        Used to seed starter suggestions without a user query. Order is not
+        guaranteed to be meaningful.
+        """
+
+    @abstractmethod
     def delete_by_source(self, source: str) -> None:
         """Remove all chunks belonging to the given source file."""
