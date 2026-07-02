@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 SUPPORTED_TYPES = ["pdf", "docx", "txt", "csv"]
 PROCESSED_FILES_KEY = "processed_files"
 PENDING_DELETE_KEY = "pending_delete_source"
+SELECTED_SOURCES_KEY = "selected_sources"
 
 _FILE_ICONS = {"pdf": "📄", "docx": "📝", "txt": "📃", "csv": "📊"}
 
@@ -61,32 +62,109 @@ def _render_brand_header(brand: BrandConfig) -> None:
     )
 
 
+def _source_checkbox_key(source: str) -> str:
+    return f"select_{source}"
+
+
 def _render_source_list(repository: DocumentRepository) -> None:
     sources = repository.list_indexed_sources()
     if not sources:
         st.caption("No documents indexed yet.")
         return
 
+    _prune_stale_checkbox_state(sources)
+    _render_select_all(sources)
+
     pending: str | None = st.session_state.get(PENDING_DELETE_KEY)
 
-    for source in sources:
+    for index, source in enumerate(sources):
         ext = source.rsplit(".", 1)[-1].lower() if "." in source else ""
         icon = _FILE_ICONS.get(ext, "📎")
 
-        col_name, col_btn = st.columns([5, 1], vertical_alignment="center")
-        with col_name:
-            st.markdown(
-                f'<div class="cb-doc-row"><span class="cb-doc-icon">{icon}</span>'
-                f'<span class="cb-doc-name" title="{source}">{source}</span></div>',
-                unsafe_allow_html=True,
-            )
-        with col_btn:
-            if st.button("✕", key=f"delete_{source}", help=f"Remove {source}"):
-                st.session_state[PENDING_DELETE_KEY] = source
-                st.rerun()
+        with st.container(key=f"cb_src_row_{index}"):
+            col_check, col_name, col_btn = st.columns([1, 5, 1], vertical_alignment="center")
+            with col_check:
+                st.checkbox(
+                    source,
+                    key=_source_checkbox_key(source),
+                    on_change=_on_source_toggle,
+                    args=(sources,),
+                    label_visibility="collapsed",
+                )
+            with col_name:
+                st.markdown(
+                    f'<div class="cb-doc-row"><span class="cb-doc-icon">{icon}</span>'
+                    f'<span class="cb-doc-name" title="{source}">{source}</span></div>',
+                    unsafe_allow_html=True,
+                )
+            with col_btn:
+                if st.button("✕", key=f"delete_{source}", help=f"Remove {source}"):
+                    st.session_state[PENDING_DELETE_KEY] = source
+                    st.rerun()
 
         if pending == source:
             _render_delete_confirmation(repository, source)
+
+    _persist_selection(sources)
+    if not _selected_from_state(sources):
+        st.caption("No source selected — searching all documents.")
+
+
+def _render_select_all(sources: list[str]) -> None:
+    """Render the NotebookLM-style master checkbox that drives every row."""
+    # The master reflects whether every row is currently checked. Seed the
+    # widget state before creating it so ``value=`` is never needed (which
+    # Streamlit ignores once a keyed widget owns its state).
+    st.session_state["select_all"] = all(
+        st.session_state.get(_source_checkbox_key(s), False) for s in sources
+    )
+    with st.container(key="cb_src_row_select_all"):
+        col_check, col_label, _col_spacer = st.columns([1, 5, 1], vertical_alignment="center")
+        with col_check:
+            st.checkbox(
+                "Select all",
+                key="select_all",
+                on_change=_on_select_all_toggle,
+                args=(sources,),
+                label_visibility="collapsed",
+            )
+        with col_label:
+            st.markdown(
+                '<div class="cb-doc-row"><span class="cb-select-all-label">Select all</span></div>',
+                unsafe_allow_html=True,
+            )
+
+
+def _on_select_all_toggle(sources: list[str]) -> None:
+    """Master checkbox callback: mirror its value onto every row checkbox."""
+    value = st.session_state.get("select_all", False)
+    for source in sources:
+        st.session_state[_source_checkbox_key(source)] = value
+
+
+def _on_source_toggle(sources: list[str]) -> None:
+    """Row checkbox callback: keep the master checkbox in sync with the rows."""
+    st.session_state["select_all"] = all(
+        st.session_state.get(_source_checkbox_key(s), False) for s in sources
+    )
+
+
+def _selected_from_state(sources: list[str]) -> list[str]:
+    return [s for s in sources if st.session_state.get(_source_checkbox_key(s), False)]
+
+
+def _persist_selection(sources: list[str]) -> None:
+    """Mirror the checkbox state into ``selected_sources`` for the chat layer."""
+    st.session_state[SELECTED_SOURCES_KEY] = set(_selected_from_state(sources))
+
+
+def _prune_stale_checkbox_state(sources: list[str]) -> None:
+    """Drop checkbox state for sources that are no longer indexed."""
+    valid = set(sources)
+    for key in [k for k in st.session_state if k.startswith("select_")]:
+        source = key[len("select_") :]
+        if source and source not in valid and key != "select_all":
+            del st.session_state[key]
 
 
 def _render_delete_confirmation(repository: DocumentRepository, source: str) -> None:
@@ -98,6 +176,8 @@ def _render_delete_confirmation(repository: DocumentRepository, source: str) -> 
                 repository.delete_by_source(source)
                 st.session_state.pop(PENDING_DELETE_KEY, None)
                 st.session_state.get(PROCESSED_FILES_KEY, set()).discard(source)
+                st.session_state.get(SELECTED_SOURCES_KEY, set()).discard(source)
+                st.session_state.pop(f"select_{source}", None)
                 st.success(f"✓ {source} removed.")
             except Exception as error:  # noqa: BLE001
                 logger.exception("Failed to delete source '%s'", source)

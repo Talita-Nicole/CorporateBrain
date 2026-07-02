@@ -48,10 +48,23 @@ class AnswerQuestion:
         self._repository = repository
         self._language_model = language_model
 
-    def execute(self, question: str, history: list[Message]) -> AnswerResult:
-        """Generate an answer for ``question`` grounded in retrieved context."""
+    def execute(
+        self,
+        question: str,
+        history: list[Message],
+        selected_sources: list[str] | None = None,
+    ) -> AnswerResult:
+        """Generate an answer for ``question`` grounded in retrieved context.
+
+        When ``selected_sources`` is a non-empty list, retrieval is restricted
+        to those source files. An empty list or ``None`` searches all indexed
+        documents (default behavior).
+        """
         answer_language = self._detect_answer_language(question)
-        retriever = self._repository.as_retriever(search_kwargs={"k": RETRIEVER_TOP_K})
+        search_kwargs: dict = {"k": RETRIEVER_TOP_K}
+        if selected_sources:
+            search_kwargs["filter"] = {"source": {"$in": selected_sources}}
+        retriever = self._repository.as_retriever(search_kwargs=search_kwargs)
         documents = retriever.invoke(question)
         numbered_docs = {i + 1: doc for i, doc in enumerate(documents)}
         numbered_context = self._build_numbered_context(numbered_docs)

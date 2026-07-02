@@ -49,19 +49,36 @@ def inject_styles(primary_color: str) -> None:
   margin-bottom: 8px;
 }}
 
-/* ── Document rows ── */
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:has([class*="st-key-delete_"]) {{
-  display: flex !important;
-  align-items: center !important;   /* centralize the columns relative to each other */
+/* ── Document rows (Select all + each indexed source) ──
+   Both the master "Select all" row and every source row are wrapped in a
+   keyed container whose class starts with ``st-key-cb_src_row_``. Styling the
+   shared wrapper (rather than only rows that :has() a delete button) keeps the
+   checkboxes on a single X axis and the labels/names starting at the same
+   offset — the two used to diverge because only file rows were padded. */
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] {{
   border-radius: 8px;
   padding: 4px 6px;
-  margin-bottom: 4px;
+  /* The sidebar content column places a 16px flex ``gap`` between every child,
+     which leaves the source list looking loose. Pull each row up so the visible
+     row-to-row gap is a compact, uniform ~8px. */
+  margin-top: -8px;
+  margin-bottom: 0;
   transition: background 0.15s;
 }}
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:has([class*="st-key-delete_"]):hover {{
+/* The master row is the first child after the "Indexed sources" label; use a
+   smaller pull so it keeps a little breathing room under the header (~6px)
+   instead of colliding with it. */
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_select_all"] {{
+  margin-top: -2px;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"]:hover {{
   background: var(--brand-dim);
 }}
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:has([class*="st-key-delete_"]) [data-testid="stElementContainer"] {{
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stHorizontalBlock"] {{
+  display: flex !important;
+  align-items: center !important;   /* centralize the columns relative to each other */
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stElementContainer"] {{
   margin: 0 !important;
   padding: 0 !important;
 }}
@@ -70,8 +87,21 @@ def inject_styles(primary_color: str) -> None:
    Vertical centering is handled solely by stHorizontalBlock above — do not set
    align-items here: stColumn's main axis is column, so align-items would only
    affect the horizontal (cross) axis, not vertical position. */
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:has([class*="st-key-delete_"]) [data-testid="stColumn"] {{
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stColumn"] {{
   min-width: 0;
+}}
+/* Streamlit gives the last markdown container a ``margin-bottom: -16px`` that
+   collapses the name column to zero height, leaving the file name anchored to
+   the column's centre line and hanging ~8px below the checkbox/icon/✕. Zero it
+   so the column keeps its real height and stHorizontalBlock's align-items:center
+   can line all four elements up on one horizontal axis. */
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stMarkdownContainer"] {{
+  margin-bottom: 0 !important;
+}}
+/* BaseWeb top-aligns the checkbox glyph inside its label; centre it so it shares
+   the row's vertical axis with the name and ✕ button. */
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stCheckbox"] label {{
+  align-items: center !important;
 }}
 .cb-doc-row {{
   display: flex;
@@ -82,10 +112,12 @@ def inject_styles(primary_color: str) -> None:
 }}
 .cb-doc-icon {{
   flex-shrink: 0;
+  width: 1.15rem;        /* fixed box so varied emoji glyph widths don't shift the name */
   font-size: 1rem;
   line-height: 1;
   display: flex;
   align-items: center;   /* neutralize the emoji glyph's intrinsic vertical space */
+  justify-content: center;
 }}
 .cb-doc-name {{
   flex: 1;
@@ -96,7 +128,13 @@ def inject_styles(primary_color: str) -> None:
   text-overflow: ellipsis;
   white-space: nowrap;
 }}
-[data-testid="stSidebar"] [data-testid="stHorizontalBlock"]:has([class*="st-key-delete_"]) p {{
+.cb-select-all-label {{
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.7;
+  line-height: 1;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] p {{
   margin: 0 !important;
 }}
 

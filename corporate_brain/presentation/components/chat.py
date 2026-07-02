@@ -10,6 +10,7 @@ from domain.entities.message import Message
 logger = logging.getLogger(__name__)
 
 HISTORY_KEY = "chat_history"
+SELECTED_SOURCES_KEY = "selected_sources"
 
 
 def render_chat(answer_use_case: AnswerQuestion, company_name: str) -> None:
@@ -51,13 +52,18 @@ def _handle_user_input(answer_use_case: AnswerQuestion) -> None:
         return
 
     history = list(st.session_state[HISTORY_KEY])
+    selected_sources = sorted(st.session_state.get(SELECTED_SOURCES_KEY, set()))
     with st.chat_message("user"):
         st.markdown(question)
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
             try:
-                result = answer_use_case.execute(question=question, history=history)
+                result = answer_use_case.execute(
+                    question=question,
+                    history=history,
+                    selected_sources=selected_sources,
+                )
             except Exception as error:  # noqa: BLE001
                 logger.exception("Failed to answer question")
                 st.error(f"Failed to generate an answer: {error}")
