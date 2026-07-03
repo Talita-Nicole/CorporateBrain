@@ -23,26 +23,39 @@ from infrastructure.config.azure_settings import AzureSettings  # noqa: E402
 from infrastructure.config.github_models_settings import (  # noqa: E402
     GitHubModelsSettings,
 )
-from infrastructure.llm_errors import LLMServiceError  # noqa: E402
+from infrastructure.config.groq_settings import GroqSettings  # noqa: E402
+from infrastructure.config.providers import (  # noqa: E402
+    AZURE_PROVIDER,
+    GITHUB_PROVIDER,
+    GROQ_PROVIDER,
+    build_embedder,
+    build_language_model,
+)
+from infrastructure.llm_errors import LLMCallError, LLMServiceError  # noqa: E402
+from presentation.llm_error_messages import format_llm_call_error  # noqa: E402
 
 OK = "✅"
 FAIL = "❌"
-AZURE_PROVIDER = "azure"
-GITHUB_PROVIDER = "github"
 LLM_PROMPT = "Reply only: connection OK"
 EMBEDDING_SAMPLE = "Short test sentence to generate embeddings."
+
+
+def _provider_display_name(provider: str) -> str:
+    if provider == GITHUB_PROVIDER:
+        return "GitHub Models"
+    if provider == GROQ_PROVIDER:
+        return "Groq"
+    return "Azure OpenAI"
 
 
 def _build_chat_client(
     provider: str,
     azure_settings: AzureSettings | None,
     github_settings: GitHubModelsSettings | None,
+    groq_settings: GroqSettings | None,
 ) -> tuple[LanguageModel, str]:
-    if provider == GITHUB_PROVIDER and github_settings is not None:
-        return github_settings.get_llm_client(), "GitHub Models"
-    if azure_settings is not None:
-        return azure_settings.get_llm_client(), "Azure OpenAI"
-    raise LLMServiceError("Chat model configuration is missing.")
+    client = build_language_model(provider, azure_settings, github_settings, groq_settings)
+    return client, _provider_display_name(provider)
 
 
 def _build_embedder(
@@ -50,19 +63,16 @@ def _build_embedder(
     azure_settings: AzureSettings | None,
     github_settings: GitHubModelsSettings | None,
 ) -> tuple[Embedder, str]:
-    if provider == GITHUB_PROVIDER and github_settings is not None:
-        return github_settings.get_embedding_client(), "GitHub Models"
-    if azure_settings is not None:
-        return azure_settings.get_embedding_client(), "Azure OpenAI"
-    raise LLMServiceError("Embeddings configuration is missing.")
+    client = build_embedder(provider, azure_settings, github_settings)
+    return client, _provider_display_name(provider)
 
 
 def _test_chat(client: LanguageModel, provider_name: str) -> bool:
     start = time.perf_counter()
     try:
         answer = client.invoke(LLM_PROMPT)
-    except LLMServiceError as error:
-        print(f"{FAIL} Chat ({provider_name}): {error}")
+    except LLMCallError as error:
+        print(f"{FAIL} Chat ({provider_name}): {format_llm_call_error(error)}")
         return False
     elapsed = time.perf_counter() - start
     print(f"{OK} Chat responding via {provider_name} ({elapsed:.2f}s): {answer.strip()}")
@@ -73,8 +83,8 @@ def _test_embeddings(client: Embedder, provider_name: str) -> bool:
     start = time.perf_counter()
     try:
         vector = client.embed_query(EMBEDDING_SAMPLE)
-    except LLMServiceError as error:
-        print(f"{FAIL} Embeddings ({provider_name}): {error}")
+    except LLMCallError as error:
+        print(f"{FAIL} Embeddings ({provider_name}): {format_llm_call_error(error)}")
         return False
     elapsed = time.perf_counter() - start
     print(
@@ -86,12 +96,13 @@ def _test_embeddings(client: Embedder, provider_name: str) -> bool:
 
 def _load_settings(
     providers: tuple[str, str],
-) -> tuple[AzureSettings | None, GitHubModelsSettings | None] | None:
+) -> tuple[AzureSettings | None, GitHubModelsSettings | None, GroqSettings | None] | None:
     try:
         azure_settings = AzureSettings() if AZURE_PROVIDER in providers else None
         github_settings = (
             GitHubModelsSettings() if GITHUB_PROVIDER in providers else None
         )
+        groq_settings = GroqSettings() if GROQ_PROVIDER in providers else None
     except ValidationError as error:
         print(f"{FAIL} Missing or invalid configuration")
         for item in error.errors():
@@ -99,7 +110,7 @@ def _load_settings(
             print(f"   - {field}: {item['msg']}")
         return None
     print(f"{OK} Configuration loaded")
-    return azure_settings, github_settings
+    return azure_settings, github_settings, groq_settings
 
 
 def main() -> int:
@@ -115,11 +126,11 @@ def main() -> int:
     loaded = _load_settings((chat_provider, embedding_provider))
     if loaded is None:
         return 1
-    azure_settings, github_settings = loaded
+    azure_settings, github_settings, groq_settings = loaded
 
     try:
         chat_client, chat_name = _build_chat_client(
-            chat_provider, azure_settings, github_settings
+            chat_provider, azure_settings, github_settings, groq_settings
         )
         embedder, embedder_name = _build_embedder(
             embedding_provider, azure_settings, github_settings

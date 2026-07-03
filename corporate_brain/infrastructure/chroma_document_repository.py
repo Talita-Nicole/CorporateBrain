@@ -52,3 +52,8 @@ class ChromaDocumentRepository(DocumentRepository):
     def delete_by_source(self, source: str) -> None:
         self._store.delete(where={"source": source})
         logger.info("Deleted all chunks for source '%s' from %s", source, COLLECTION_NAME)
+
+    def similarity_search_with_score(
+        self, query: str, k: int, filter: dict | None = None
+    ) -> list[tuple[LangChainDocument, float]]:
+        return self._store.similarity_search_with_score(query, k=k, filter=filter)

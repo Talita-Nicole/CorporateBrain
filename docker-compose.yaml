@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: corporatebrain-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-corporatebrain}
+      POSTGRES_USER: ${POSTGRES_USER:-corporatebrain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-corporatebrain}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - corporatebrain_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-corporatebrain} -d ${POSTGRES_DB:-corporatebrain}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  corporatebrain_postgres_data:

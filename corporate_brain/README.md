@@ -55,20 +55,23 @@ Copy the example file and fill in your Azure OpenAI settings:
 cp .env.example .env
 ```
 
-| Variable | Description |
-|---|---|
-| `LLM_PROVIDER` | Chat provider: `azure` (default) or `github` |
-| `EMBEDDING_PROVIDER` | Embeddings provider: `azure` (default) or `github` |
-| `AZURE_OPENAI_API_KEY` | Azure OpenAI resource key |
-| `AZURE_OPENAI_ENDPOINT` | Resource endpoint, e.g. `https://my-resource.openai.azure.com/` |
-| `AZURE_OPENAI_DEPLOYMENT_NAME` | Chat deployment name — required only when `LLM_PROVIDER=azure` |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embeddings deployment name (always required) |
-| `AZURE_OPENAI_API_VERSION` | API version (default `2024-02-01`) |
-| `GITHUB_TOKEN` | GitHub token with `models:read` — required only when `LLM_PROVIDER=github` |
-| `GITHUB_MODELS_ENDPOINT` | GitHub Models endpoint (default `https://models.github.ai/inference`) |
-| `GITHUB_MODELS_CHAT_MODEL` | Chat model id (default `openai/gpt-4o-mini`) |
-| `GITHUB_MODELS_EMBEDDING_MODEL` | Embedding model id (default `openai/text-embedding-3-small`) |
-| `CHROMA_PERSIST_DIR` | Local Chroma directory (default `./chroma_db`) |
+| Variable | Description | When required |
+|---|---|---|
+| `LLM_PROVIDER` | Chat provider: `azure` (default) or `github` | Always (defaults to `azure`) |
+| `EMBEDDING_PROVIDER` | Embeddings provider: `azure` (default) or `github` | Always (defaults to `azure`) |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI resource key | `LLM_PROVIDER=azure` or `EMBEDDING_PROVIDER=azure` |
+| `AZURE_OPENAI_ENDPOINT` | Resource endpoint, e.g. `https://my-resource.openai.azure.com/` | `LLM_PROVIDER=azure` or `EMBEDDING_PROVIDER=azure` |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | Chat deployment name | `LLM_PROVIDER=azure` |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Embeddings deployment name | `EMBEDDING_PROVIDER=azure` |
+| `AZURE_OPENAI_API_VERSION` | API version (default `2024-02-01`) | Optional |
+| `GITHUB_TOKEN` | GitHub token with `models:read` | `LLM_PROVIDER=github` or `EMBEDDING_PROVIDER=github` |
+| `GITHUB_MODELS_ENDPOINT` | GitHub Models endpoint (default `https://models.github.ai/inference`) | Optional |
+| `GITHUB_MODELS_CHAT_MODEL` | Chat model id (default `openai/gpt-4o-mini`) | Optional |
+| `GITHUB_MODELS_EMBEDDING_MODEL` | Embedding model id (default `openai/text-embedding-3-small`) | Optional |
+| `CHROMA_PERSIST_DIR` | Local Chroma directory (default `./chroma_db`) | Optional |
+
+If `LLM_PROVIDER` and `EMBEDDING_PROVIDER` are both `github`, no Azure variables are read or
+validated at all — `AzureSettings` is never instantiated in that case.
 
 `.env` must never be committed.
 

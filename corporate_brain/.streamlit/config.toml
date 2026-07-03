@@ -1,0 +1,10 @@
+[client]
+# "viewer" hides developer options (Deploy, Rerun, Clear cache, Settings) from
+# the ⋮ menu and toolbar, but keeps viewer options — notably the Light/Dark/
+# System theme switcher, which has no public Python API to control
+# programmatically in this Streamlit version (st.context.theme is read-only).
+# "minimal" would hide the theme switcher too, with no in-app replacement.
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false

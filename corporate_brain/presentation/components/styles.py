@@ -46,6 +46,13 @@ def inject_styles(primary_color: str) -> None:
   height: calc(100vh + 8px) !important;
   display: flex !important;
   flex-direction: column !important;
+  /* Without this, overflow inside the flex column (e.g. a long document/
+     conversation list) is NOT contained by the inner ``cb_sidebar_scroll``
+     box — it leaks past this container's own fixed height and forces a
+     second, outer scrollbar on the page/body, on top of the intended single
+     scroll inside cb_sidebar_scroll. Hidden here pushes all overflow handling
+     down to the one scrollable child that actually wants it. */
+  overflow: hidden !important;
 }}
 /* Force EVERY ancestor div of the Settings bar (however many wrappers Streamlit
    nests between the user content and the block that holds it) to be a
@@ -90,15 +97,16 @@ def inject_styles(primary_color: str) -> None:
   opacity: 1;
 }}
 
-/* Sidebar header (logo + company name). Keep a compact, consistent gap down to
-   the first section ("Add sources"): ~10px below the divider. */
+/* Sidebar header (logo + company name). ~20px of breathing room down to the
+   first section ("Add sources") so the brand block doesn't visually collide
+   with the section label right below it. */
 .cb-brand-header {{
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 0 10px 0;
   border-bottom: 1px solid var(--brand-dim);
-  margin-bottom: 4px;
+  margin-bottom: 20px;
 }}
 .cb-brand-header img {{
   width: 36px;
@@ -175,6 +183,16 @@ def inject_styles(primary_color: str) -> None:
    the row's vertical axis with the name and ✕ button. */
 [data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stCheckbox"] label {{
   align-items: center !important;
+}}
+/* Source selection checkboxes disabled while a question is streaming (see
+   sidebar.py's GENERATING_KEY lock) — dim the row and show a "no" cursor so
+   it reads as locked, not just a rendering glitch. */
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stCheckbox"]:has(input:disabled) {{
+  opacity: 0.45;
+  cursor: not-allowed;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [data-testid="stCheckbox"]:has(input:disabled) label {{
+  cursor: not-allowed;
 }}
 .cb-doc-row {{
   display: flex;
@@ -343,6 +361,27 @@ def inject_styles(primary_color: str) -> None:
 }}
 [data-testid="stMainBlockContainer"] {{
   padding-top: 1.75rem !important;
+}}
+
+/* ── Sticky "Clear Chat" header ──
+   [data-testid="stAppScrollToBottomContainer"] (class stMain) is the actual
+   scrolling ancestor of the chat transcript — stMainBlockContainer itself
+   does not scroll. Pinning the header there keeps "Clear Chat" reachable
+   without scrolling back to the top of a long conversation.
+   ``background-color: inherit`` does NOT work here — every ancestor up to
+   <body> has a transparent background in Streamlit's DOM (the real theme
+   color is painted on <body> itself), so "inherit" resolves to transparent
+   and the pinned header becomes invisible with transcript content showing
+   through. ``light-dark()`` supplies Streamlit's actual default light/dark
+   background colors directly, switching with the OS/browser color-scheme
+   the same way Streamlit's own theme does. */
+[data-testid="stAppScrollToBottomContainer"] [class*="st-key-cb_chat_header"] {{
+  color-scheme: light dark;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 5 !important;
+  background-color: light-dark(#ffffff, #0e1117) !important;
+  padding-bottom: 8px;
 }}
 
 /* ── Page title ── */

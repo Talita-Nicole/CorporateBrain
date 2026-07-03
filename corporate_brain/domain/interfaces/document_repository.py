@@ -33,3 +33,15 @@ class DocumentRepository(ABC):
     @abstractmethod
     def delete_by_source(self, source: str) -> None:
         """Remove all chunks belonging to the given source file."""
+
+    @abstractmethod
+    def similarity_search_with_score(
+        self, query: str, k: int, filter: dict | None = None
+    ) -> list[tuple[LangChainDocument, float]]:
+        """Return up to ``k`` chunks matching ``query`` with a raw distance score.
+
+        Lower scores mean more relevant (this is a distance, not a
+        normalized similarity — Chroma's default space is L2). Used to gate
+        low-relevance chunks out of the answer context (see
+        ``AnswerQuestion``).
+        """

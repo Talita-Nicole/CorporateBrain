@@ -1,13 +1,14 @@
 """Azure OpenAI implementation of the language model contract."""
 
-from typing import Optional
+from typing import Iterator, Optional
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessageChunk
 from langchain_openai import AzureChatOpenAI
 
 from domain.interfaces.language_model import LanguageModel
 from infrastructure.config.azure_settings import AzureSettings
-from infrastructure.llm_errors import LLM_SDK_ERRORS, translate_llm_error
+from infrastructure.llm_errors import with_llm_error_translation
 
 DEFAULT_TEMPERATURE = 0.0
 _CREDENTIAL_HINT = "AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT"
@@ -35,10 +36,12 @@ class AzureLanguageModel(LanguageModel):
         return self._chat_model
 
     def invoke(self, prompt: str) -> str:
-        try:
+        with with_llm_error_translation("Azure OpenAI", _CREDENTIAL_HINT):
             response = self._chat_model.invoke(prompt)
-        except LLM_SDK_ERRORS as error:
-            raise translate_llm_error(
-                error, provider="Azure OpenAI", credential_hint=_CREDENTIAL_HINT
-            ) from error
         return str(response.content)
+
+    def stream(self, messages: list) -> Iterator[AIMessageChunk]:
+        # stream_usage=True is required for the merged chunk to carry
+        # usage_metadata (token counts) once the stream completes.
+        with with_llm_error_translation("Azure OpenAI", _CREDENTIAL_HINT):
+            yield from self._chat_model.bind(stream_usage=True).stream(messages)

@@ -5,7 +5,7 @@ from langchain_openai import AzureOpenAIEmbeddings
 
 from domain.interfaces.embedder import Embedder
 from infrastructure.config.azure_settings import AzureSettings
-from infrastructure.llm_errors import LLM_SDK_ERRORS, translate_llm_error
+from infrastructure.llm_errors import with_llm_error_translation
 
 _CREDENTIAL_HINT = "AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT"
 
@@ -33,9 +33,5 @@ class AzureEmbedder(Embedder):
         return self._embeddings
 
     def embed_query(self, text: str) -> list[float]:
-        try:
+        with with_llm_error_translation("Azure OpenAI", _CREDENTIAL_HINT):
             return self._embeddings.embed_query(text)
-        except LLM_SDK_ERRORS as error:
-            raise translate_llm_error(
-                error, provider="Azure OpenAI", credential_hint=_CREDENTIAL_HINT
-            ) from error

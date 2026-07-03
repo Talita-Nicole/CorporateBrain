@@ -9,6 +9,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from domain.interfaces.document_loader import DocumentLoader
 from infrastructure.loaders.csv_loader import CsvLoader
 from infrastructure.loaders.docx_loader import DocxLoader
+from infrastructure.loaders.excel_loader import ExcelLoader
+from infrastructure.loaders.markdown_loader import MarkdownLoader
 from infrastructure.loaders.pdf_loader import PdfLoader
 from infrastructure.loaders.txt_loader import TxtLoader
 
@@ -30,6 +32,8 @@ class LangChainDocumentLoader(DocumentLoader):
             ".docx": DocxLoader(splitter),
             ".txt": TxtLoader(splitter),
             ".csv": CsvLoader(splitter),
+            ".md": MarkdownLoader(splitter),
+            ".xlsx": ExcelLoader(splitter),
         }
 
     def load_and_split(
