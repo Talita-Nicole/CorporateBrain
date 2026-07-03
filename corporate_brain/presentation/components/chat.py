@@ -77,17 +77,23 @@ def _render_header(company_name: str) -> None:
         with col_btn:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button(
-                t("chat.clear_button"),
+                t("chat.new_chat_button"),
                 use_container_width=True,
-                help=t("chat.clear_help"),
+                help=t("chat.new_chat_help"),
             ):
+                # The conversation being left behind is already persisted:
+                # autosave_conversation() runs after every completed turn (see
+                # _process_generation), so by the time this button is clicked
+                # the current session_state[CURRENT_SESSION_ID_KEY] row (if
+                # any) already reflects the full history. Nothing further to
+                # save here — only reset state for a fresh conversation.
                 st.session_state[HISTORY_KEY] = []
                 st.session_state.pop(SUGGESTIONS_KEY, None)
                 st.session_state.pop(GENERATING_KEY, None)
                 # Allow starter suggestions to be regenerated for the fresh session.
                 st.session_state.pop(STARTERS_DONE_KEY, None)
-                # Detach from any saved conversation so a later save creates a new
-                # one instead of silently overwriting the one just cleared.
+                # Detach from the saved conversation so the next autosave
+                # creates a new row instead of overwriting the one just left.
                 st.session_state.pop(CURRENT_SESSION_ID_KEY, None)
                 st.session_state.pop(CURRENT_SESSION_NAME_KEY, None)
                 st.rerun()
@@ -99,6 +105,10 @@ def _render_transcript() -> None:
             st.markdown(message.content)
             if message.sources:
                 _render_sources(message.sources)
+            if message.total_tokens is not None:
+                _render_token_count(
+                    message.input_tokens, message.output_tokens, message.total_tokens
+                )
 
 
 def _accept_new_question() -> None:
@@ -187,9 +197,17 @@ def _process_generation(
         )
         for source in result.sources
     ]
+    debug = result.retrieval_debug
     st.session_state[HISTORY_KEY].append(Message(role="user", content=question))
     st.session_state[HISTORY_KEY].append(
-        Message(role="assistant", content=result.answer, sources=message_sources)
+        Message(
+            role="assistant",
+            content=result.answer,
+            sources=message_sources,
+            input_tokens=debug.input_tokens if debug is not None else None,
+            output_tokens=debug.output_tokens if debug is not None else None,
+            total_tokens=debug.total_tokens if debug is not None else None,
+        )
     )
     st.session_state[SUGGESTIONS_KEY] = result.suggested_questions
     st.session_state.pop(GENERATING_KEY, None)
@@ -269,12 +287,24 @@ def _render_token_usage(debug: RetrievalDebug | None) -> None:
     """
     if debug is None or debug.total_tokens is None:
         return
+    _render_token_count(debug.input_tokens, debug.output_tokens, debug.total_tokens)
+
+
+def _render_token_count(
+    input_tokens: int | None, output_tokens: int | None, total_tokens: int
+) -> None:
+    """Shared renderer for the token-count caption: live answers (via
+    ``_render_token_usage``) and messages replayed from history/a saved
+    conversation (via ``_render_transcript``) both go through this, so a
+    reloaded turn shows the exact same line it did when first generated —
+    not a value silently dropped once the live streaming frame is gone.
+    """
     st.caption(
         t(
             "chat.token_usage",
-            input=debug.input_tokens,
-            output=debug.output_tokens,
-            total=debug.total_tokens,
+            input=input_tokens,
+            output=output_tokens,
+            total=total_tokens,
         )
     )
 

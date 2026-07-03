@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 -- and safe to run on every startup.
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sources JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+-- Per-message token usage (nullable: some LLM providers, e.g. GitHub Models,
+-- don't report usage during streaming, so a turn can legitimately have no
+-- token count). Added after the fact for the same reason as ``sources``
+-- above — idempotent, safe on every startup.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS input_tokens INTEGER;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS output_tokens INTEGER;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS total_tokens INTEGER;
+
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
 """
 
@@ -99,8 +107,10 @@ class PostgresSessionRepository(SessionRepository):
                 with conn.cursor() as cur:
                     cur.executemany(
                         """
-                        INSERT INTO chat_messages (session_id, message_index, role, content, sources)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO chat_messages
+                            (session_id, message_index, role, content, sources,
+                             input_tokens, output_tokens, total_tokens)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         [
                             (
@@ -109,6 +119,9 @@ class PostgresSessionRepository(SessionRepository):
                                 message.role,
                                 message.content,
                                 _sources_to_json(message.sources),
+                                message.input_tokens,
+                                message.output_tokens,
+                                message.total_tokens,
                             )
                             for index, message in enumerate(messages)
                         ],
@@ -151,8 +164,8 @@ class PostgresSessionRepository(SessionRepository):
             if session_row is None:
                 return None
             message_rows = conn.execute(
-                "SELECT role, content, sources FROM chat_messages "
-                "WHERE session_id = %s ORDER BY message_index ASC",
+                "SELECT role, content, sources, input_tokens, output_tokens, total_tokens "
+                "FROM chat_messages WHERE session_id = %s ORDER BY message_index ASC",
                 (session_id,),
             ).fetchall()
         return ChatSession(
@@ -163,6 +176,9 @@ class PostgresSessionRepository(SessionRepository):
                     role=r["role"],
                     content=r["content"],
                     sources=_sources_from_json(r["sources"]),
+                    input_tokens=r["input_tokens"],
+                    output_tokens=r["output_tokens"],
+                    total_tokens=r["total_tokens"],
                 )
                 for r in message_rows
             ],

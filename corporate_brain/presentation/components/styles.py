@@ -54,13 +54,19 @@ def inject_styles(primary_color: str) -> None:
      down to the one scrollable child that actually wants it. */
   overflow: hidden !important;
 }}
-/* Force EVERY ancestor div of the Settings bar (however many wrappers Streamlit
-   nests between the user content and the block that holds it) to be a
-   full-height flex column. ``:has()`` matches exactly the chain that contains
-   ``st-key-cb_settings_bar``, so the height propagates all the way down and the
-   bar's ``margin-top:auto`` can pin it to the bottom — earlier ``> div``
-   selectors missed the block when nesting was deeper than one level. */
-[data-testid="stSidebarUserContent"] div:has([class*="st-key-cb_settings_bar"]) {{
+/* Force EVERY ancestor div of the Settings bar AND of the scrollable content
+   block (however many wrappers Streamlit nests between the user content and
+   those blocks) to be a full-height, shrinkable flex column. Streamlit wraps
+   every ``st.container`` in its own extra div, and that wrapper defaults to
+   ``min-height: auto`` — which makes it size to its content's intrinsic
+   height instead of shrinking to the available space, breaking the flex
+   chain partway down. ``cb_sidebar_scroll`` and ``cb_settings_bar`` are
+   siblings (not ancestor/descendant), so ``:has()`` targeted at the settings
+   bar alone never reaches the scroll wrapper — both must be matched
+   explicitly so min-height:0 propagates all the way from
+   ``stSidebarUserContent`` down to the actual scrolling element. */
+[data-testid="stSidebarUserContent"] div:has([class*="st-key-cb_settings_bar"]),
+[data-testid="stSidebarUserContent"] div:has(> [class*="st-key-cb_sidebar_scroll"]) {{
   flex: 1 1 auto !important;
   min-height: 0 !important;
   display: flex !important;
@@ -229,6 +235,69 @@ def inject_styles(primary_color: str) -> None:
   margin: 0 !important;
 }}
 
+/* ── Saved conversation rows ──
+   Each row is a keyed container (``st-key-cb_session_row_<id>``) holding the
+   title as a full-width button (the whole row is the click target, ChatGPT/
+   Claude-style — no separate reload icon) plus a small delete button. Match
+   the same padding/hover rhythm as the document rows above for visual
+   consistency between the two collapsible sections. */
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] {{
+  border-radius: 8px;
+  padding: 2px 6px;
+  margin-top: -8px;
+  margin-bottom: 0;
+  transition: background 0.15s;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button {{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  padding: 6px 4px !important;
+  font-size: 0.85rem !important;
+  font-weight: 400 !important;
+  color: inherit !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}}
+/* The button's inner wrapper div (BaseWeb) centers its content by default
+   (``justify-content: center``), which overrides the button-level
+   flex-start above and re-centers the title text. Un-center it so the
+   conversation name reads as a left-aligned list item, not a pill button. */
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button > div {{
+  justify-content: flex-start !important;
+  width: 100%;
+  overflow: hidden;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button [data-testid="stMarkdownContainer"] {{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button p {{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0 !important;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button:hover:not(:disabled) {{
+  background: var(--brand-dim) !important;
+}}
+/* The active conversation's button is rendered ``disabled`` — style that
+   state as a highlighted "currently open" row instead of the default greyed-
+   out disabled look, and swap the cursor back to default (not "not-allowed"),
+   since disabling it here means "already open", not "unavailable". */
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button:disabled {{
+  background: var(--brand-dim) !important;
+  color: var(--brand) !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+  cursor: default !important;
+}}
+
 /* ── Upload area ── */
 [data-testid="stFileUploader"] {{
   border: 1.5px dashed var(--brand-dim) !important;
@@ -363,24 +432,57 @@ def inject_styles(primary_color: str) -> None:
   padding-top: 1.75rem !important;
 }}
 
-/* ── Sticky "Clear Chat" header ──
+/* ── Sticky "New Chat" header ──
    [data-testid="stAppScrollToBottomContainer"] (class stMain) is the actual
    scrolling ancestor of the chat transcript — stMainBlockContainer itself
-   does not scroll. Pinning the header there keeps "Clear Chat" reachable
+   does not scroll. Pinning the header there keeps "New Chat" reachable
    without scrolling back to the top of a long conversation.
-   ``background-color: inherit`` does NOT work here — every ancestor up to
-   <body> has a transparent background in Streamlit's DOM (the real theme
-   color is painted on <body> itself), so "inherit" resolves to transparent
-   and the pinned header becomes invisible with transcript content showing
-   through. ``light-dark()`` supplies Streamlit's actual default light/dark
-   background colors directly, switching with the OS/browser color-scheme
-   the same way Streamlit's own theme does. */
-[data-testid="stAppScrollToBottomContainer"] [class*="st-key-cb_chat_header"] {{
-  color-scheme: light dark;
+   Every ancestor between this header and ``.stApp`` has a transparent
+   background in Streamlit's DOM (only ``.stApp`` itself is painted with the
+   real active theme color). A hardcoded ``light-dark(#ffffff, #0e1117)``
+   used to paper over that, but ``light-dark()`` resolves from the BROWSER/OS
+   color-scheme preference, not from the theme the user picked inside the
+   app's own Light/Dark/System menu — switching the in-app theme while the OS
+   stayed in the other mode left this one element painted in the stale
+   color, a visible dark/light patch over an otherwise-retheme'd page.
+   Fixed by making the whole ancestor chain ``background-color: inherit``
+   too, so the real color painted on ``.stApp`` — whatever the user actually
+   chose — propagates all the way down through ``inherit`` instead of being
+   guessed from a media-query-like signal that can disagree with it. */
+/* Every ancestor between the header and ``stAppViewContainer`` (the nearest
+   opaque one — it, and everything above it up to ``.stApp``, is already
+   painted with the real theme color) must carry ``background-color:
+   inherit`` for that color to actually propagate down to the header —
+   ``inherit`` only bridges ONE generation at a time, so a single
+   transparent link anywhere breaks it for every descendant below. The chain
+   here is: stAppViewContainer (opaque) → one unlabelled wrapper div →
+   stAppScrollToBottomContainer → stMainBlockContainer → an unlabelled
+   stVerticalBlock → stLayoutWrapper → the header's own stVerticalBlock.
+   Missing any ONE of these (as happened while narrowing this rule down)
+   silently breaks the whole chain below it. */
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewContainer"] > div,
+[data-testid="stAppScrollToBottomContainer"],
+[data-testid="stAppScrollToBottomContainer"] [data-testid="stMainBlockContainer"],
+[data-testid="stAppScrollToBottomContainer"] [data-testid="stMainBlockContainer"] * {{
+  background-color: inherit;
+}}
+/* Streamlit wraps every ``st.container(key=...)`` in an extra
+   ``stLayoutWrapper`` div, and it's THAT wrapper — not the ``stVerticalBlock``
+   the key actually lands on — that needs ``position: sticky``. Applying
+   sticky to the inner ``st-key-cb_chat_header`` block alone computes as
+   "sticky" (DevTools confirms it) but never visually pins: verified by
+   injecting a bare sticky ``<div>`` as a direct child of the scroller, which
+   pins correctly, versus one one level deeper (mirroring the wrapper/block
+   nesting Streamlit produces here), which does not — the extra flex-layout
+   level in between defeats it. Targeting the wrapper via ``:has()`` reaches
+   the level that actually holds the scroll-relative containing block. */
+[data-testid="stAppScrollToBottomContainer"] div:has(> [class*="st-key-cb_chat_header"]) {{
   position: sticky !important;
   top: 0 !important;
   z-index: 5 !important;
-  background-color: light-dark(#ffffff, #0e1117) !important;
+}}
+[data-testid="stAppScrollToBottomContainer"] [class*="st-key-cb_chat_header"] {{
   padding-bottom: 8px;
 }}
 

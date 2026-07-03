@@ -17,20 +17,9 @@ from domain.interfaces.language_model import LanguageModel
 logger = logging.getLogger(__name__)
 
 RETRIEVER_TOP_K = 4
-# Chunks with an L2 distance above this threshold are dropped before
-# building the prompt context, so out-of-scope questions reliably produce an
-# empty context instead of low-relevance noise. This is a raw distance (lower
-# = more relevant), not a normalized similarity — Chroma's default space is
-# L2 and does not support LangChain's 0..1 relevance-score conversion out of
-# the box. Calibrated empirically against text-embedding-3-small; revisit if
-# the embedding model changes.
 MAX_RELEVANT_DISTANCE = 1.1
 SNIPPET_MAX_LENGTH = 300
 DEBUG_SNIPPET_MAX_LENGTH = 160
-# Mirrors infrastructure/loaders/loader_factory.py's CHUNK_SIZE/CHUNK_OVERLAP
-# for the debug panel (CB-009). Not imported directly: application/ must not
-# depend on infrastructure/. Passed as constructor defaults so the
-# composition root can override them if the loader's values ever change.
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 200
 ENGLISH_LANGUAGE_CODE = "en"
@@ -39,9 +28,6 @@ SUGGESTIONS_MARKER = "###FOLLOW_UP###"
 MAX_SUGGESTIONS = 3
 STARTER_SAMPLE_SIZE = 8
 
-# Labels sent to the prompt once the question's language has been detected.
-# The answer language always mirrors the question — there is no user-facing
-# override (removed by product decision: see STORIES.md CB-007 history).
 PORTUGUESE_LANGUAGE_LABEL = "Portuguese (pt-BR)"
 ENGLISH_LANGUAGE_LABEL = "English"
 
@@ -250,8 +236,6 @@ class AnswerQuestion:
                         yield visible
                     buffer = ""
                     continue
-                # Hold back a tail that could be the start of the marker
-                # split across chunk boundaries; release the rest.
                 safe_len = max(0, len(buffer) - marker_prefix_len)
                 if safe_len:
                     yield buffer[:safe_len]

@@ -78,10 +78,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         ENGLISH: "Ask questions about company documents.",
         PORTUGUESE: "Faça perguntas sobre os documentos da empresa.",
     },
-    "chat.clear_button": {ENGLISH: "Clear Chat", PORTUGUESE: "Limpar Conversa"},
-    "chat.clear_help": {
-        ENGLISH: "Clears this conversation only. Company documents are not affected.",
-        PORTUGUESE: "Limpa apenas esta conversa. Os documentos da empresa não são afetados.",
+    "chat.new_chat_button": {ENGLISH: "New Chat", PORTUGUESE: "Nova Conversa"},
+    "chat.new_chat_help": {
+        ENGLISH: "Starts a new conversation. This one is already saved under Saved conversations.",
+        PORTUGUESE: "Inicia uma nova conversa. Esta já está salva em Conversas salvas.",
     },
     "chat.input_placeholder": {
         ENGLISH: "Ask a question about company documents…",
@@ -112,9 +112,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     # sessions.py
     "sessions.saved_conversations": {ENGLISH: "Saved conversations", PORTUGUESE: "Conversas salvas"},
     "sessions.no_saved": {ENGLISH: "No saved conversations yet.", PORTUGUESE: "Nenhuma conversa salva ainda."},
-    "sessions.load_help": {ENGLISH: "Load this conversation", PORTUGUESE: "Carregar esta conversa"},
     "sessions.delete_help": {ENGLISH: "Delete this conversation", PORTUGUESE: "Excluir esta conversa"},
-    "sessions.current_suffix": {ENGLISH: "(current)", PORTUGUESE: "(atual)"},
     "sessions.delete_confirm": {
         ENGLISH: "Delete this saved conversation? This action cannot be undone.",
         PORTUGUESE: "Excluir esta conversa salva? Esta ação não pode ser desfeita.",

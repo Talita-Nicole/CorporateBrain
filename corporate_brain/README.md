@@ -75,6 +75,10 @@ validated at all — `AzureSettings` is never instantiated in that case.
 
 `.env` must never be committed.
 
+> **Security note:** `docker-compose.yaml` and `.env.example` default `POSTGRES_PASSWORD` to
+> `corporatebrain`. That's fine for local development, but change it before running against
+> any server reachable outside your machine.
+
 ### Providers — Azure or GitHub Models
 
 Chat and embeddings each have a selectable provider, so the app can run even when an

@@ -44,15 +44,21 @@ def render_sessions(repository: SessionRepository | None) -> None:
     current_id = st.session_state.get(CURRENT_SESSION_ID_KEY)
 
     for session in sessions:
+        is_active = session.id == current_id
         with st.container(key=f"cb_session_row_{session.id}"):
-            col_name, col_load, col_del = st.columns([5, 1, 1], vertical_alignment="center")
+            col_name, col_del = st.columns([6, 1], vertical_alignment="center")
             with col_name:
-                label = session.name
-                if session.id == current_id:
-                    label = f"**{label}** {t('sessions.current_suffix')}"
-                st.markdown(label)
-            with col_load:
-                if st.button("↻", key=f"load_session_{session.id}", help=t("sessions.load_help")):
+                # The whole row is the click target — clicking the title loads
+                # the conversation directly, matching the common chat-app
+                # pattern (ChatGPT/Claude) instead of requiring a separate
+                # reload icon. Disabled while already active so re-clicking
+                # the open conversation is a no-op rather than a wasted reload.
+                if st.button(
+                    session.name,
+                    key=f"load_session_{session.id}",
+                    use_container_width=True,
+                    disabled=is_active,
+                ):
                     _load_session(repository, session.id)
                     st.rerun()
             with col_del:
@@ -101,6 +107,15 @@ def _render_delete_confirmation(repository: SessionRepository, session_id: str) 
             try:
                 repository.delete(session_id)
                 if st.session_state.get(CURRENT_SESSION_ID_KEY) == session_id:
+                    # The conversation just deleted is the one currently shown
+                    # in the chat panel — it no longer exists anywhere, so
+                    # reset the chat to the same empty "New Chat" state used
+                    # by the New Chat button, instead of leaving its stale
+                    # transcript on screen pointing at a deleted row.
+                    st.session_state[HISTORY_KEY] = []
+                    st.session_state.pop(SUGGESTIONS_KEY, None)
+                    st.session_state.pop(GENERATING_KEY, None)
+                    st.session_state.pop(STARTERS_DONE_KEY, None)
                     st.session_state.pop(CURRENT_SESSION_ID_KEY, None)
                     st.session_state.pop(CURRENT_SESSION_NAME_KEY, None)
                 st.session_state.pop(PENDING_DELETE_SESSION_KEY, None)

@@ -11,6 +11,7 @@ from application.use_cases.answer_question import AnswerQuestion
 from application.use_cases.ingest_document import IngestDocument
 from domain.interfaces.session_repository import SessionRepository
 from infrastructure.chroma_document_repository import ChromaDocumentRepository
+from infrastructure.config.app_settings import load_app_settings
 from infrastructure.config.azure_settings import AzureSettings
 from infrastructure.config.github_models_settings import GitHubModelsSettings
 from infrastructure.config.groq_settings import GroqSettings
@@ -45,7 +46,12 @@ def run() -> None:
     brand = load_brand_config()
 
     if UI_LANGUAGE_KEY not in st.session_state:
-        st.session_state[UI_LANGUAGE_KEY] = os.getenv(
+        # Persisted choice (Settings > Interface language) takes priority
+        # over the DEFAULT_UI_LANGUAGE env var, mirroring how company_name/
+        # company_logo_path already override their own env var defaults —
+        # same single, global, app-wide settings file, no per-session state.
+        saved_language = load_app_settings().ui_language.strip()
+        st.session_state[UI_LANGUAGE_KEY] = saved_language or os.getenv(
             "DEFAULT_UI_LANGUAGE", DEFAULT_UI_LANGUAGE
         ).strip() or DEFAULT_UI_LANGUAGE
 

@@ -56,44 +56,48 @@ def render_sidebar(
         _render_brand_header(brand)
 
         with st.container(key="cb_sidebar_scroll"):
-            st.markdown(
-                f'<div class="cb-section-label">{t("sidebar.add_sources")}</div>',
-                unsafe_allow_html=True,
-            )
-            # Keyed with a reset counter: bumping it after a batch forces
-            # Streamlit to recreate the widget empty, so processed files
-            # disappear from the upload box instead of lingering there (the
-            # widget's own file list is otherwise sticky by design) alongside
-            # the "Indexed sources" list below. Reset happens whether the
-            # batch succeeded or failed — failures are reported via a
-            # persistent message under the box (``UPLOAD_ERRORS_KEY``), not
-            # by leaving the failed file stuck in the widget.
-            reset_counter = st.session_state.get(UPLOADER_RESET_COUNTER_KEY, 0)
-            uploaded_files = st.file_uploader(
-                t("sidebar.upload_label"),
-                type=SUPPORTED_TYPES,
-                accept_multiple_files=True,
-                label_visibility="collapsed",
-                key=f"file_uploader_{reset_counter}",
-            )
-            if uploaded_files:
-                _ingest_new_files(uploaded_files, ingest_use_case)
-                st.session_state[UPLOADER_RESET_COUNTER_KEY] = reset_counter + 1
-                st.rerun()
-
-            for error_message in st.session_state.get(UPLOAD_ERRORS_KEY, []):
-                st.error(error_message)
-            if st.session_state.get(UPLOAD_ERRORS_KEY):
-                if st.button(t("sidebar.dismiss_errors"), key="dismiss_upload_errors"):
-                    st.session_state[UPLOAD_ERRORS_KEY] = []
-                    st.rerun()
-
-            st.markdown("<br>", unsafe_allow_html=True)
             # Expanded by default on first render; st.expander remembers its
             # own open/closed state across reruns within the session via its
             # key, so a user's later collapse/expand persists for the rest
-            # of the session without extra state plumbing.
+            # of the session without extra state plumbing. Upload lives as
+            # the first element inside this same expander/section (instead of
+            # its own separate bordered card above it) so it reads as part of
+            # "Company documents" rather than a floating, disconnected block.
             with st.expander(t("sidebar.indexed_sources"), expanded=True):
+                st.markdown(
+                    f'<div class="cb-section-label">{t("sidebar.add_sources")}</div>',
+                    unsafe_allow_html=True,
+                )
+                # Keyed with a reset counter: bumping it after a batch forces
+                # Streamlit to recreate the widget empty, so processed files
+                # disappear from the upload box instead of lingering there
+                # (the widget's own file list is otherwise sticky by design)
+                # alongside the indexed-sources list below. Reset happens
+                # whether the batch succeeded or failed — failures are
+                # reported via a persistent message under the box
+                # (``UPLOAD_ERRORS_KEY``), not by leaving the failed file
+                # stuck in the widget.
+                reset_counter = st.session_state.get(UPLOADER_RESET_COUNTER_KEY, 0)
+                uploaded_files = st.file_uploader(
+                    t("sidebar.upload_label"),
+                    type=SUPPORTED_TYPES,
+                    accept_multiple_files=True,
+                    label_visibility="collapsed",
+                    key=f"file_uploader_{reset_counter}",
+                )
+                if uploaded_files:
+                    _ingest_new_files(uploaded_files, ingest_use_case)
+                    st.session_state[UPLOADER_RESET_COUNTER_KEY] = reset_counter + 1
+                    st.rerun()
+
+                for error_message in st.session_state.get(UPLOAD_ERRORS_KEY, []):
+                    st.error(error_message)
+                if st.session_state.get(UPLOAD_ERRORS_KEY):
+                    if st.button(t("sidebar.dismiss_errors"), key="dismiss_upload_errors"):
+                        st.session_state[UPLOAD_ERRORS_KEY] = []
+                        st.rerun()
+
+                st.markdown("<br>", unsafe_allow_html=True)
                 _render_source_list(repository)
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -198,6 +202,7 @@ def _render_settings_body() -> None:
         if st.button(t("sidebar.save"), key="save_settings", type="primary", use_container_width=True):
             settings.enable_source_selection = enabled
             settings.company_name = company_name.strip()
+            settings.ui_language = st.session_state["ui_language_select"]
             if logo_file is not None:
                 try:
                     settings.company_logo_path = _save_company_logo(logo_file)

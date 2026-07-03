@@ -18,6 +18,12 @@ class AppSettings:
     # user override that default from the Settings UI without editing .env.
     company_name: str = ""
     company_logo_path: str = ""
+    # Empty string means "use the DEFAULT_UI_LANGUAGE env var default" (see
+    # presentation/i18n.py) — same override pattern as company_name/logo
+    # above. Persisted here (not st.session_state) so the choice survives a
+    # process restart or a new browser session — this is a single, global,
+    # app-wide setting (the app is single-tenant), not a per-user preference.
+    ui_language: str = ""
 
 
 def load_app_settings(path: Path = DEFAULT_SETTINGS_PATH) -> AppSettings:
