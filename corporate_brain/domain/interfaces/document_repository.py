@@ -40,8 +40,8 @@ class DocumentRepository(ABC):
     ) -> list[tuple[LangChainDocument, float]]:
         """Return up to ``k`` chunks matching ``query`` with a raw distance score.
 
-        Lower scores mean more relevant (this is a distance, not a
-        normalized similarity — Chroma's default space is L2). Used to gate
-        low-relevance chunks out of the answer context (see
-        ``AnswerQuestion``).
+        Lower scores mean more relevant (this is a distance, not a normalized
+        similarity — the pgvector store's default space is cosine, range
+        0..2). Used to gate low-relevance chunks out of the answer context
+        (see ``AnswerQuestion``).
         """

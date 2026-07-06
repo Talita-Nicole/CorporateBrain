@@ -24,6 +24,12 @@ _UI_LANGUAGE_DISPLAY = {
 _STRINGS: dict[str, dict[str, str]] = {
     # sidebar.py
     "sidebar.add_sources": {ENGLISH: "Add sources", PORTUGUESE: "Adicionar fontes"},
+    "sidebar.add_documents_button": {ENGLISH: "➕ Add documents", PORTUGUESE: "➕ Adicionar documentos"},
+    "sidebar.upload_title": {ENGLISH: "Add documents", PORTUGUESE: "Adicionar documentos"},
+    "sidebar.upload_hint": {
+        ENGLISH: "Supported files: PDF, DOCX, TXT, CSV, MD, XLSX.",
+        PORTUGUESE: "Arquivos suportados: PDF, DOCX, TXT, CSV, MD, XLSX.",
+    },
     "sidebar.upload_label": {ENGLISH: "Upload documents", PORTUGUESE: "Enviar documentos"},
     "sidebar.indexed_sources": {ENGLISH: "Company documents", PORTUGUESE: "Documentos da empresa"},
     "sidebar.no_documents": {ENGLISH: "No documents yet.", PORTUGUESE: "Nenhum documento ainda."},

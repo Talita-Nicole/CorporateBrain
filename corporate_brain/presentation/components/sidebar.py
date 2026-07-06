@@ -32,6 +32,7 @@ PENDING_DELETE_KEY = "pending_delete_source"
 SELECTED_SOURCES_KEY = "selected_sources"
 SOURCE_SELECTION_ENABLED_KEY = "enable_source_selection"
 SETTINGS_MODAL_OPEN_KEY = "settings_modal_open"
+UPLOAD_MODAL_OPEN_KEY = "upload_modal_open"
 UPLOADER_RESET_COUNTER_KEY = "uploader_reset_counter"
 UPLOAD_ERRORS_KEY = "upload_errors"
 # Same session_state key chat.py uses for "a question is in flight" — kept as
@@ -56,40 +57,23 @@ def render_sidebar(
         _render_brand_header(brand)
 
         with st.container(key="cb_sidebar_scroll"):
-            # Expanded by default on first render; st.expander remembers its
-            # own open/closed state across reruns within the session via its
-            # key, so a user's later collapse/expand persists for the rest
-            # of the session without extra state plumbing. Upload lives as
-            # the first element inside this same expander/section (instead of
-            # its own separate bordered card above it) so it reads as part of
-            # "Company documents" rather than a floating, disconnected block.
+            # Collapsible sections (chevron header, styled flat in styles.py) so
+            # a long document or conversation list can be folded away — the
+            # section stays a compact header when there are many entries. Upload
+            # is an action: the "Add documents" button opens a modal (see
+            # _render_upload_modal), keeping the section itself to just the
+            # indexed-sources list, NotebookLM-style.
             with st.expander(t("sidebar.indexed_sources"), expanded=True):
-                st.markdown(
-                    f'<div class="cb-section-label">{t("sidebar.add_sources")}</div>',
-                    unsafe_allow_html=True,
-                )
-                # Keyed with a reset counter: bumping it after a batch forces
-                # Streamlit to recreate the widget empty, so processed files
-                # disappear from the upload box instead of lingering there
-                # (the widget's own file list is otherwise sticky by design)
-                # alongside the indexed-sources list below. Reset happens
-                # whether the batch succeeded or failed — failures are
-                # reported via a persistent message under the box
-                # (``UPLOAD_ERRORS_KEY``), not by leaving the failed file
-                # stuck in the widget.
-                reset_counter = st.session_state.get(UPLOADER_RESET_COUNTER_KEY, 0)
-                uploaded_files = st.file_uploader(
-                    t("sidebar.upload_label"),
-                    type=SUPPORTED_TYPES,
-                    accept_multiple_files=True,
-                    label_visibility="collapsed",
-                    key=f"file_uploader_{reset_counter}",
-                )
-                if uploaded_files:
-                    _ingest_new_files(uploaded_files, ingest_use_case)
-                    st.session_state[UPLOADER_RESET_COUNTER_KEY] = reset_counter + 1
+                if st.button(
+                    t("sidebar.add_documents_button"),
+                    key="open_upload",
+                    use_container_width=True,
+                ):
+                    st.session_state[UPLOAD_MODAL_OPEN_KEY] = True
                     st.rerun()
 
+                # Upload failures persist here (below the button) even after the
+                # modal is dismissed, so a failed batch isn't silently lost.
                 for error_message in st.session_state.get(UPLOAD_ERRORS_KEY, []):
                     st.error(error_message)
                 if st.session_state.get(UPLOAD_ERRORS_KEY):
@@ -97,16 +81,22 @@ def render_sidebar(
                         st.session_state[UPLOAD_ERRORS_KEY] = []
                         st.rerun()
 
-                st.markdown("<br>", unsafe_allow_html=True)
                 _render_source_list(repository)
 
-            st.markdown("<br>", unsafe_allow_html=True)
             if session_repository is not None:
-                with st.expander(t("sessions.saved_conversations"), expanded=True):
-                    render_sessions(session_repository)
+                # Flat section (not an expander) — only Company documents needs
+                # to collapse when the file list grows; conversations stay open.
+                st.markdown(
+                    f'<div class="cb-section-label cb-section-label-spaced">'
+                    f'{t("sessions.saved_conversations")}</div>',
+                    unsafe_allow_html=True,
+                )
+                render_sessions(session_repository)
 
         _render_settings_trigger()
 
+    if st.session_state.get(UPLOAD_MODAL_OPEN_KEY):
+        _render_upload_modal(ingest_use_case)
     if st.session_state.get(SETTINGS_MODAL_OPEN_KEY):
         _render_settings_modal()
 
@@ -130,16 +120,81 @@ def _render_brand_header(brand: BrandConfig) -> None:
     )
 
 
+def _close_upload_modal() -> None:
+    st.session_state[UPLOAD_MODAL_OPEN_KEY] = False
+
+
+def _render_upload_modal(ingest_use_case: IngestDocument) -> None:
+    """Open the document-upload dialog with a title in the current UI language.
+
+    Same pattern as ``_render_settings_modal``: ``st.dialog`` is applied as a
+    decorator at call time so the title re-resolves through ``t()`` on every
+    render instead of freezing in the import-time language.
+    """
+
+    @st.dialog(t("sidebar.upload_title"), on_dismiss=_close_upload_modal)
+    def _dialog() -> None:
+        _render_upload_body(ingest_use_case)
+
+    _dialog()
+
+
+def _render_upload_body(ingest_use_case: IngestDocument) -> None:
+    st.caption(t("sidebar.upload_hint"))
+    # Keyed with a reset counter: bumping it after a batch forces Streamlit to
+    # recreate the widget empty, so processed files disappear from the box
+    # instead of lingering there (the widget's own file list is sticky by
+    # design). Reset happens whether the batch succeeded or failed — failures
+    # are surfaced below (``UPLOAD_ERRORS_KEY``), not by leaving the failed
+    # file stuck in the widget.
+    reset_counter = st.session_state.get(UPLOADER_RESET_COUNTER_KEY, 0)
+    uploaded_files = st.file_uploader(
+        t("sidebar.upload_label"),
+        type=SUPPORTED_TYPES,
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+        key=f"file_uploader_{reset_counter}",
+    )
+    if uploaded_files:
+        _ingest_new_files(uploaded_files, ingest_use_case)
+        st.session_state[UPLOADER_RESET_COUNTER_KEY] = reset_counter + 1
+        # Rerun keeps the modal open (UPLOAD_MODAL_OPEN_KEY is still set) with a
+        # fresh, empty uploader, while the sidebar's source list picks up the
+        # newly indexed files.
+        st.rerun()
+
+    for error_message in st.session_state.get(UPLOAD_ERRORS_KEY, []):
+        st.error(error_message)
+    if st.session_state.get(UPLOAD_ERRORS_KEY):
+        if st.button(t("sidebar.dismiss_errors"), key="dismiss_upload_errors_modal"):
+            st.session_state[UPLOAD_ERRORS_KEY] = []
+            st.rerun()
+
+
 def _source_checkbox_key(source: str) -> str:
     return f"select_{source}"
 
 
 def _render_settings_trigger() -> None:
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stVerticalBlock"]:has(> div.st-key-cb_settings_bar) div.st-key-cb_settings_bar {
+            display: flex;
+            justify-content: flex-end;
+        }
+        div.st-key-cb_settings_bar button {
+            width: auto !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     with st.container(key="cb_settings_bar"):
-        if st.button(t("sidebar.settings_button"), key="open_settings", use_container_width=True):
+        if st.button(t("sidebar.settings_button"), key="open_settings", use_container_width=False):
             st.session_state[SETTINGS_MODAL_OPEN_KEY] = True
             st.rerun()
-
 
 def _close_settings_modal() -> None:
     st.session_state[SETTINGS_MODAL_OPEN_KEY] = False

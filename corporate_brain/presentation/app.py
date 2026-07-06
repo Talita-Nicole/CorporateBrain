@@ -7,10 +7,9 @@ from typing import Optional
 import streamlit as st
 from pydantic import ValidationError
 
-from application.use_cases.answer_question import AnswerQuestion
+from application.use_cases.answer_question import AnswerQuestion, MAX_RELEVANT_DISTANCE
 from application.use_cases.ingest_document import IngestDocument
 from domain.interfaces.session_repository import SessionRepository
-from infrastructure.chroma_document_repository import ChromaDocumentRepository
 from infrastructure.config.app_settings import load_app_settings
 from infrastructure.config.azure_settings import AzureSettings
 from infrastructure.config.github_models_settings import GitHubModelsSettings
@@ -30,6 +29,7 @@ from infrastructure.loaders.loader_factory import (
     CHUNK_SIZE,
     LangChainDocumentLoader,
 )
+from infrastructure.pgvector_document_repository import PgVectorDocumentRepository
 from infrastructure.postgres_session_repository import PostgresSessionRepository
 from presentation.components.branding import load_brand_config
 from presentation.components.chat import render_chat
@@ -39,7 +39,7 @@ from presentation.i18n import UI_LANGUAGE_KEY, DEFAULT_UI_LANGUAGE
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PERSIST_DIR = "./chroma_db"
+MAX_RELEVANT_DISTANCE_ENV = "MAX_RELEVANT_DISTANCE"
 
 
 def run() -> None:
@@ -74,6 +74,7 @@ def run() -> None:
             GitHubModelsSettings() if GITHUB_PROVIDER in providers else None
         )
         groq_settings = GroqSettings() if chat_provider == GROQ_PROVIDER else None
+        postgres_settings = PostgresSettings()
     except ValidationError as error:
         logger.error("Invalid settings: %s", error)
         st.error(_format_validation_error(error))
@@ -86,13 +87,27 @@ def run() -> None:
             azure_settings,
             github_settings,
             groq_settings,
+            postgres_settings,
         )
     except LLMServiceError as error:
         logger.error("Cannot build providers: %s", error)
         st.error(str(error))
         return
+    except Exception as error:  # noqa: BLE001
+        # The vector store now requires a reachable Postgres (pgvector). A
+        # connection/setup failure here means the database is down or
+        # misconfigured — surface a clear, actionable message instead of a
+        # raw traceback.
+        logger.exception("Cannot initialize the vector store")
+        st.error(
+            "Could not connect to the database (Postgres + pgvector). "
+            "Start it with `docker compose up -d`, verify the POSTGRES_* "
+            "variables in .env, then reload.\n\n"
+            f"Details: {error}"
+        )
+        return
 
-    session_repository = _build_session_repository()
+    session_repository = _build_session_repository(postgres_settings)
 
     render_sidebar(ingest_use_case, repository, brand, session_repository)
     render_chat(answer_use_case, brand.company_name, session_repository)
@@ -104,8 +119,9 @@ def _build_dependencies(
     embedding_provider: str,
     _azure_settings: Optional[AzureSettings],
     _github_settings: Optional[GitHubModelsSettings],
-    _groq_settings: Optional[GroqSettings] = None,
-) -> tuple[IngestDocument, AnswerQuestion, ChromaDocumentRepository]:
+    _groq_settings: Optional[GroqSettings],
+    _postgres_settings: PostgresSettings,
+) -> tuple[IngestDocument, AnswerQuestion, PgVectorDocumentRepository]:
     """Build and cache the LLM/embedding clients and use cases.
 
     Cached by ``(chat_provider, embedding_provider)`` only — the settings
@@ -120,9 +136,10 @@ def _build_dependencies(
     language_model = build_language_model(
         chat_provider, _azure_settings, _github_settings, _groq_settings
     )
-    repository = ChromaDocumentRepository(
+    repository = PgVectorDocumentRepository(
         embedder=embedder,
-        persist_directory=os.getenv("CHROMA_PERSIST_DIR", DEFAULT_PERSIST_DIR),
+        connection_url=_postgres_settings.sqlalchemy_url(),
+        conninfo=_postgres_settings.connection_string(),
     )
     loader = LangChainDocumentLoader()
     ingest_use_case = IngestDocument(loader=loader, repository=repository)
@@ -134,8 +151,26 @@ def _build_dependencies(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
         embedding_model_name=embedding_model_name,
+        max_relevant_distance=_resolve_max_distance(),
     )
     return ingest_use_case, answer_use_case, repository
+
+
+def _resolve_max_distance() -> float:
+    """Relevance cutoff, overridable via ``MAX_RELEVANT_DISTANCE`` env var."""
+    raw = os.getenv(MAX_RELEVANT_DISTANCE_ENV, "").strip()
+    if not raw:
+        return MAX_RELEVANT_DISTANCE
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r — falling back to %.3f",
+            MAX_RELEVANT_DISTANCE_ENV,
+            raw,
+            MAX_RELEVANT_DISTANCE,
+        )
+        return MAX_RELEVANT_DISTANCE
 
 
 def _embedding_model_name(embedder) -> str:
@@ -145,21 +180,18 @@ def _embedding_model_name(embedder) -> str:
 
 
 @st.cache_resource(show_spinner=False)
-def _build_session_repository() -> Optional[SessionRepository]:
-    """Build the Postgres-backed session repository, or ``None`` if unavailable.
+def _build_session_repository(
+    _postgres_settings: PostgresSettings,
+) -> Optional[SessionRepository]:
+    """Build the Postgres-backed session repository, or ``None`` on failure.
 
-    Session persistence (CB-013) is an optional feature: if ``POSTGRES_*``
-    variables are missing or the database is unreachable, the chat still
-    works — it just doesn't offer save/load of past conversations. Failures
-    are logged, not raised, so a missing/down Postgres never blocks the app.
+    Session persistence stays optional/resilient (CB-013): a connection
+    failure is logged, not raised, so chat still works without save/load of
+    past conversations. (The vector store, in contrast, hard-requires
+    Postgres and is built above.)
     """
     try:
-        settings = PostgresSettings()
-    except ValidationError:
-        logger.info("Postgres not configured — session persistence disabled.")
-        return None
-    try:
-        return PostgresSessionRepository(settings.connection_string())
+        return PostgresSessionRepository(_postgres_settings.connection_string())
     except Exception:  # noqa: BLE001
         logger.exception("Could not connect to Postgres — session persistence disabled.")
         return None

@@ -17,41 +17,45 @@ def inject_styles(primary_color: str) -> None:
 [data-testid="stSidebar"] {{
   border-right: 1px solid var(--brand-dim);
 }}
-/* Streamlit ships a fixed 60px sidebar header (``stSidebarHeader``) that also
-   hosts the collapse ("<<") button, then renders app content below it in
-   ``stSidebarUserContent``. That stacks the brand header under a tall empty
-   strip. Collapse the header to a compact 44px row and pull the content up to
-   overlap it, so the brand header (logo + name) lands on the SAME axis as the
-   "<<" button — a single compact header, Claude-style.
-   ``position/z-index`` keep the header (and its button) painted above the
-   pulled-up content; without this the content covers the button and the
-   collapse control stops responding to clicks. The 13px top padding centres the
-   button on the logo's row; -52px is tuned so the logo top clears the viewport
-   edge (~8px) while leaving ~14px down to the first section. */
-[data-testid="stSidebarHeader"] {{
-  height: 44px !important;
-  min-height: 44px !important;
-  padding-top: 13px !important;
-  padding-bottom: 0 !important;
-  position: relative !important;
-  z-index: 10 !important;
-}}
-[data-testid="stSidebarUserContent"] {{
-  margin-top: -52px !important;
-  padding-top: 0 !important;
-  /* The -52px pull lifts this box's top to ~-8px (44px header − 52px). To reach
-     the real viewport bottom the height must span that gap too: 100vh − (−8px)
-     = 100vh + 8px. The old ``100vh − 44px`` stopped ~52px short, leaving the
-     empty strip below the pinned Settings bar. */
-  height: calc(100vh + 8px) !important;
+/* Make the sidebar column (header + user content) a full-height flex column so
+   the user content fills EXACTLY the space left by the header — no fixed-height
+   math. The previous approach forced ``height: calc(100vh + 8px)`` on the
+   content (to compensate a -52px negative-margin overlap of the header), which
+   left the content box taller than the viewport and produced a second,
+   page-level scrollbar. ``:has(> stSidebarUserContent)`` targets the emotion-
+   hashed wrapper Streamlit renders between the sidebar and its two children,
+   without depending on that generated class name. */
+[data-testid="stSidebar"] > div:has(> [data-testid="stSidebarUserContent"]) {{
   display: flex !important;
   flex-direction: column !important;
-  /* Without this, overflow inside the flex column (e.g. a long document/
-     conversation list) is NOT contained by the inner ``cb_sidebar_scroll``
-     box — it leaks past this container's own fixed height and forces a
-     second, outer scrollbar on the page/body, on top of the intended single
-     scroll inside cb_sidebar_scroll. Hidden here pushes all overflow handling
-     down to the one scrollable child that actually wants it. */
+  height: 100% !important;
+}}
+/* The native header strip only hosts the "<<" collapse button; compress it to a
+   short row so the brand block below it sits near the top instead of under a
+   tall empty gap (the "margem em cima" complaint). */
+[data-testid="stSidebarHeader"] {{
+  flex: 0 0 auto !important;
+  height: 2.25rem !important;
+  min-height: 2.25rem !important;
+  padding-top: 6px !important;
+  padding-bottom: 0 !important;
+  /* Streamlit ships a 16px bottom margin on this strip — dead space that pushed
+     the brand block down (the "margem em cima"). Zero it. */
+  margin-bottom: 0 !important;
+}}
+[data-testid="stSidebarUserContent"] {{
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  /* Streamlit's default ~6rem bottom padding here left the content box ending
+     ~96px above the viewport, so the pinned Settings bar floated well short of
+     the real bottom (the "margem embaixo"). Zero it so the flex column spans
+     the full sidebar height and Settings actually reaches the bottom. */
+  padding-bottom: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  /* Contain overflow here so the single intended scroll lives in
+     ``cb_sidebar_scroll`` below, never leaking out to a page-level scrollbar. */
   overflow: hidden !important;
 }}
 /* Force EVERY ancestor div of the Settings bar AND of the scrollable content
@@ -71,6 +75,15 @@ def inject_styles(primary_color: str) -> None:
   min-height: 0 !important;
   display: flex !important;
   flex-direction: column !important;
+}}
+/* The broad rule above also matches the Settings bar's OWN wrapper (it contains
+   the settings block as a descendant), inflating it to flex:1 so it grew a tall
+   empty band above the button. Override just that direct wrapper back to
+   hug-content — the scroll wrapper above already takes all the free space, so
+   the Settings wrapper naturally lands at the bottom. */
+[data-testid="stSidebarUserContent"] [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cb_settings_bar"]) {{
+  flex: 0 0 auto !important;
+  margin-top: auto !important;
 }}
 
 /* ── Sidebar scrollable content (everything above the pinned Settings bar) ── */
@@ -112,7 +125,7 @@ def inject_styles(primary_color: str) -> None:
   gap: 10px;
   padding: 0 0 10px 0;
   border-bottom: 1px solid var(--brand-dim);
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }}
 .cb-brand-header img {{
   width: 36px;
@@ -134,6 +147,59 @@ def inject_styles(primary_color: str) -> None:
   text-transform: uppercase;
   opacity: 0.5;
   margin-bottom: 8px;
+}}
+/* Spacing above the flat "Saved conversations" label so it separates from the
+   Company documents section above it. */
+.cb-section-label-spaced {{
+  margin-top: 20px;
+}}
+
+/* ── Sidebar section expander (Company documents only) ──
+   Streamlit's default expander is a heavy bordered card; strip it to a flat
+   collapsible section that reads exactly like the other section labels: no
+   border, no background box, the SAME colour as the sidebar, and the chevron
+   pushed to the RIGHT edge. Scoped to the sidebar so the chat's own bordered
+   "sources" expander is untouched. */
+[data-testid="stSidebar"] [data-testid="stExpander"] {{
+  margin-bottom: 6px;
+}}
+[data-testid="stSidebar"] [data-testid="stExpander"] details {{
+  border: none !important;
+  background: transparent !important;
+}}
+/* No background change on hover/expand — the header must stay the same colour as
+   the sidebar (per feedback), so only the chevron/label read as interactive. */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {{
+  padding: 6px 0 !important;
+  background: transparent !important;
+}}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {{
+  background: transparent !important;
+}}
+/* Match the uppercase section-label styling on the expander's own header text. */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {{
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}}
+/* Push the chevron icon to the far RIGHT of the header (Streamlit renders it on
+   the left, inside a shrink-to-fit ``<span>``). Make that span full-width first,
+   then ``order`` + ``margin-left: auto`` sends the chevron to the right edge
+   while the label stays on the left. */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary > span {{
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+}}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary [data-testid="stIconMaterial"] {{
+  margin-left: auto !important;
+  order: 2;
+}}
+/* Drop the expander body's default left padding so rows align with the header. */
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderDetails"] {{
+  padding: 4px 0 0 0 !important;
 }}
 
 /* ── Document rows (Select all + each indexed source) ──
@@ -283,19 +349,49 @@ def inject_styles(primary_color: str) -> None:
   white-space: nowrap;
   margin: 0 !important;
 }}
-[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button:hover:not(:disabled) {{
-  background: var(--brand-dim) !important;
+/* The WHOLE row highlights on hover (full width, including the ✕ column) so the
+   delete button is never left sitting on an un-highlighted strip — this is what
+   made the session hover look "separado" versus the document rows. The load
+   button itself stays transparent; the row container owns the highlight, exactly
+   like the document rows above. */
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"]:hover {{
+  background: var(--brand-dim);
 }}
-/* The active conversation's button is rendered ``disabled`` — style that
-   state as a highlighted "currently open" row instead of the default greyed-
-   out disabled look, and swap the cursor back to default (not "not-allowed"),
-   since disabling it here means "already open", not "unavailable". */
+/* The active conversation's load button is rendered ``disabled`` — highlight the
+   whole row (via ``:has``) and mark the title, instead of the default greyed-out
+   disabled look. The button's own background stays transparent so the row
+   container is the single source of the highlight. */
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"]:has(button:disabled) {{
+  background: var(--brand-dim);
+}}
 [data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-load_session_"] button:disabled {{
-  background: var(--brand-dim) !important;
+  background: transparent !important;
   color: var(--brand) !important;
   font-weight: 600 !important;
   opacity: 1 !important;
   cursor: default !important;
+}}
+/* Delete (✕) button stays hidden until the row is hovered — ChatGPT/Claude
+   style — so the list reads as clean titles, not a column of ✕ glyphs. Kept
+   focus-visible so keyboard users can still reach it. */
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-delete_session_"] button {{
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"]:hover [class*="st-key-delete_session_"] button,
+[data-testid="stSidebar"] [class*="st-key-cb_session_row_"] [class*="st-key-delete_session_"] button:focus-visible {{
+  opacity: 1;
+}}
+/* Same hover-reveal for the document rows' ✕, so both sections behave
+   identically (the previous always-on ✕ on documents was the visible mismatch
+   against the sessions' hover-only ✕). */
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [class*="st-key-delete_"] button {{
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}}
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"]:hover [class*="st-key-delete_"] button,
+[data-testid="stSidebar"] [class*="st-key-cb_src_row_"] [class*="st-key-delete_"] button:focus-visible {{
+  opacity: 1;
 }}
 
 /* ── Upload area ── */
@@ -312,8 +408,10 @@ def inject_styles(primary_color: str) -> None:
   margin-bottom: 8px;
 }}
 
-/* ── Source expander ── */
-[data-testid="stExpander"] {{
+/* ── Source expander (chat answers only) ──
+   Scoped to the main area so it keeps its bordered card look, WITHOUT re-adding
+   a border to the flat sidebar section expanders styled above. */
+[data-testid="stMain"] [data-testid="stExpander"] {{
   border: 1px solid var(--brand-dim) !important;
   border-radius: 8px !important;
 }}
@@ -433,56 +531,45 @@ def inject_styles(primary_color: str) -> None:
 }}
 
 /* ── Sticky "New Chat" header ──
-   [data-testid="stAppScrollToBottomContainer"] (class stMain) is the actual
-   scrolling ancestor of the chat transcript — stMainBlockContainer itself
-   does not scroll. Pinning the header there keeps "New Chat" reachable
-   without scrolling back to the top of a long conversation.
-   Every ancestor between this header and ``.stApp`` has a transparent
-   background in Streamlit's DOM (only ``.stApp`` itself is painted with the
-   real active theme color). A hardcoded ``light-dark(#ffffff, #0e1117)``
-   used to paper over that, but ``light-dark()`` resolves from the BROWSER/OS
-   color-scheme preference, not from the theme the user picked inside the
-   app's own Light/Dark/System menu — switching the in-app theme while the OS
-   stayed in the other mode left this one element painted in the stale
-   color, a visible dark/light patch over an otherwise-retheme'd page.
-   Fixed by making the whole ancestor chain ``background-color: inherit``
-   too, so the real color painted on ``.stApp`` — whatever the user actually
-   chose — propagates all the way down through ``inherit`` instead of being
-   guessed from a media-query-like signal that can disagree with it. */
-/* Every ancestor between the header and ``stAppViewContainer`` (the nearest
-   opaque one — it, and everything above it up to ``.stApp``, is already
-   painted with the real theme color) must carry ``background-color:
-   inherit`` for that color to actually propagate down to the header —
-   ``inherit`` only bridges ONE generation at a time, so a single
-   transparent link anywhere breaks it for every descendant below. The chain
-   here is: stAppViewContainer (opaque) → one unlabelled wrapper div →
-   stAppScrollToBottomContainer → stMainBlockContainer → an unlabelled
-   stVerticalBlock → stLayoutWrapper → the header's own stVerticalBlock.
-   Missing any ONE of these (as happened while narrowing this rule down)
-   silently breaks the whole chain below it. */
+   The scrolling ancestor of the chat transcript is ``section[data-testid=
+   "stMain"]`` (overflow-y:auto). The old rules targeted
+   ``stAppScrollToBottomContainer``, a testid that no longer exists in this
+   Streamlit version, so they matched NOTHING: the header never pinned ("New
+   Chat" scrolled away on long conversations) and never got an opaque
+   background (the subtitle/title showed through and overlapped scrolled
+   messages).
+
+   Opaque background is done theme-agnostically with ``background-color:
+   inherit``. The nearest painted ancestor is ``stAppViewContainer`` (and its
+   direct child div), which carry the real active theme color; bridging every
+   element from there down to the header with ``inherit`` propagates that exact
+   color, so it tracks the in-app Light/Dark/System choice instead of a
+   hardcoded value. ``inherit`` only bridges ONE generation, so each link in
+   the chain must be listed explicitly. The chain is: stAppViewContainer
+   (opaque) → its child div → section.stMain → stMainBlockContainer → the
+   unlabelled stVerticalBlock → the header's stLayoutWrapper → the keyed header
+   block.
+   IMPORTANT: never use a blanket ``stMain *`` selector — that would wipe the
+   chat-message avatars' own background-color and make them invisible. Only the
+   exact wrapper chain feeding the sticky header is targeted. */
 [data-testid="stAppViewContainer"],
 [data-testid="stAppViewContainer"] > div,
-[data-testid="stAppScrollToBottomContainer"],
-[data-testid="stAppScrollToBottomContainer"] [data-testid="stMainBlockContainer"],
-[data-testid="stAppScrollToBottomContainer"] [data-testid="stMainBlockContainer"] * {{
+section[data-testid="stMain"],
+section[data-testid="stMain"] > [data-testid="stMainBlockContainer"],
+section[data-testid="stMain"] > [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"],
+section[data-testid="stMain"] [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cb_chat_header"]),
+section[data-testid="stMain"] [class*="st-key-cb_chat_header"] {{
   background-color: inherit;
 }}
-/* Streamlit wraps every ``st.container(key=...)`` in an extra
-   ``stLayoutWrapper`` div, and it's THAT wrapper — not the ``stVerticalBlock``
-   the key actually lands on — that needs ``position: sticky``. Applying
-   sticky to the inner ``st-key-cb_chat_header`` block alone computes as
-   "sticky" (DevTools confirms it) but never visually pins: verified by
-   injecting a bare sticky ``<div>`` as a direct child of the scroller, which
-   pins correctly, versus one one level deeper (mirroring the wrapper/block
-   nesting Streamlit produces here), which does not — the extra flex-layout
-   level in between defeats it. Targeting the wrapper via ``:has()`` reaches
-   the level that actually holds the scroll-relative containing block. */
-[data-testid="stAppScrollToBottomContainer"] div:has(> [class*="st-key-cb_chat_header"]) {{
+/* The ``st.container(key=...)`` is wrapped in an extra ``stLayoutWrapper`` div,
+   and it's THAT wrapper (not the keyed block) that must carry ``position:
+   sticky`` for the pin to actually take, relative to the stMain scroller. */
+section[data-testid="stMain"] [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cb_chat_header"]) {{
   position: sticky !important;
   top: 0 !important;
   z-index: 5 !important;
 }}
-[data-testid="stAppScrollToBottomContainer"] [class*="st-key-cb_chat_header"] {{
+section[data-testid="stMain"] [class*="st-key-cb_chat_header"] {{
   padding-bottom: 8px;
 }}
 

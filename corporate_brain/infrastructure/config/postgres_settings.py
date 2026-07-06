@@ -1,5 +1,7 @@
 """Postgres configuration loaded and validated from environment variables."""
 
+from urllib.parse import quote_plus
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -31,8 +33,22 @@ class PostgresSettings(BaseSettings):
         return value.strip()
 
     def connection_string(self) -> str:
+        """libpq keyword connection string (used by psycopg directly)."""
         return (
             f"host={self.postgres_host} port={self.postgres_port} "
             f"dbname={self.postgres_db} user={self.postgres_user} "
             f"password={self.postgres_password}"
+        )
+
+    def sqlalchemy_url(self) -> str:
+        """SQLAlchemy URL for the psycopg 3 driver, used by ``PGVector``.
+
+        User and password are percent-encoded so special characters (``@``,
+        ``:``, ``/``, ...) in credentials do not corrupt the URL.
+        """
+        user = quote_plus(self.postgres_user)
+        password = quote_plus(self.postgres_password)
+        return (
+            f"postgresql+psycopg://{user}:{password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )

@@ -52,7 +52,7 @@ def render_chat(
     suggestions_slot = st.empty()
 
     _accept_new_question()
-    _process_generation(answer_use_case, turn_slot, session_repository)
+    _process_generation(answer_use_case, turn_slot, session_repository, company_name)
     _ensure_starters(answer_use_case)
     _render_suggestions(suggestions_slot)
 
@@ -133,6 +133,7 @@ def _process_generation(
     answer_use_case: AnswerQuestion,
     slot,
     session_repository: SessionRepository | None = None,
+    assistant_name: str = "Knowledge Base",
 ) -> None:
     """Answer the question queued by ``_accept_new_question`` (if any)."""
     question = st.session_state.get(GENERATING_KEY)
@@ -157,6 +158,7 @@ def _process_generation(
                     # LLM/embedding call: the data is already produced by the
                     # same retrieval and the same streamed response.
                     debug=True,
+                    assistant_name=assistant_name,
                 )
                 if streaming.result is not None and streaming.result.refused:
                     # Guardrail refusals are resolved without calling the LLM
