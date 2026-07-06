@@ -23,7 +23,6 @@ _UI_LANGUAGE_DISPLAY = {
 # change without silently breaking the Portuguese translation lookup.
 _STRINGS: dict[str, dict[str, str]] = {
     # sidebar.py
-    "sidebar.add_sources": {ENGLISH: "Add sources", PORTUGUESE: "Adicionar fontes"},
     "sidebar.add_documents_button": {ENGLISH: "➕ Add documents", PORTUGUESE: "➕ Adicionar documentos"},
     "sidebar.upload_title": {ENGLISH: "Add documents", PORTUGUESE: "Adicionar documentos"},
     "sidebar.upload_hint": {
@@ -93,7 +92,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         ENGLISH: "Ask a question about company documents…",
         PORTUGUESE: "Faça uma pergunta sobre os documentos da empresa…",
     },
-    "chat.thinking": {ENGLISH: "Thinking…", PORTUGUESE: "Pensando…"},
     "chat.preparing_suggestions": {ENGLISH: "Preparing suggestions…", PORTUGUESE: "Preparando sugestões…"},
     "chat.answer_failed": {
         ENGLISH: "Failed to generate an answer: {error}",

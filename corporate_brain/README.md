@@ -3,17 +3,19 @@
 A Retrieval-Augmented Generation (RAG) system that lets employees ask natural-language
 questions about internal company documents and get contextual, source-cited answers.
 
-Documents (PDF, DOCX, TXT, CSV) are uploaded, chunked and indexed into a local ChromaDB
-vector store. Questions are answered by Azure OpenAI (`gpt-4o`) grounded strictly in the
-retrieved context. The assistant replies in the same language as the question (pt-BR or
-English) and shows the document name and excerpt that supported each answer.
+Documents (PDF, DOCX, TXT, CSV, Markdown, XLSX) are uploaded, chunked and indexed into a
+Postgres + pgvector vector store. Questions are answered by the configured LLM provider
+(Azure OpenAI, GitHub Models or Groq) grounded strictly in the retrieved context. The
+assistant replies in the same language as the question (pt-BR or English) and shows the
+document name and excerpt that supported each answer, with numbered citations.
 
 ## Stack
 
 - **Python 3.11+**
-- **LangChain** — the entire RAG pipeline (loaders, splitter, embeddings, vector store, chain, memory)
-- **Azure OpenAI** — `gpt-4o` for generation and an embeddings deployment
-- **ChromaDB** — local, persistent vector store
+- **LangChain** — the RAG pipeline (loaders, splitter, embeddings, vector store)
+- **Azure OpenAI / GitHub Models / Groq** — chat generation (provider-selectable)
+- **Azure OpenAI / GitHub Models** — embeddings (provider-selectable)
+- **Postgres + pgvector** — vector store and chat-session persistence (single database)
 - **Streamlit** — chat interface
 
 ## Architecture
@@ -25,7 +27,7 @@ and holds only UI state.
 ```
 domain/          entities + interface contracts
 application/     use cases (ingest document, answer question)
-infrastructure/  adapters: LangChain loaders, Chroma repository, Azure OpenAI
+infrastructure/  adapters: LangChain loaders, pgvector repository, LLM providers
 presentation/    Streamlit UI + dependency composition
 ```
 
@@ -33,7 +35,9 @@ presentation/    Streamlit UI + dependency composition
 
 - Python 3.11 or 3.12 (recommended). Python 3.14 is not yet supported: the pinned
   LangChain 0.3.x stack relies on pydantic models that fail to build under 3.14.
-- An Azure OpenAI resource with two deployments: a chat model (`gpt-4o`) and an embeddings model
+- Docker (or a Postgres 16+ instance with the `pgvector` extension) for the database
+- Credentials for at least one chat provider (Azure OpenAI, GitHub Models or Groq) and
+  one embeddings provider (Azure OpenAI or GitHub Models)
 
 ## Installation
 
@@ -57,7 +61,7 @@ cp .env.example .env
 
 | Variable | Description | When required |
 |---|---|---|
-| `LLM_PROVIDER` | Chat provider: `azure` (default) or `github` | Always (defaults to `azure`) |
+| `LLM_PROVIDER` | Chat provider: `azure` (default), `github` or `groq` | Always (defaults to `azure`) |
 | `EMBEDDING_PROVIDER` | Embeddings provider: `azure` (default) or `github` | Always (defaults to `azure`) |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI resource key | `LLM_PROVIDER=azure` or `EMBEDDING_PROVIDER=azure` |
 | `AZURE_OPENAI_ENDPOINT` | Resource endpoint, e.g. `https://my-resource.openai.azure.com/` | `LLM_PROVIDER=azure` or `EMBEDDING_PROVIDER=azure` |
@@ -68,7 +72,12 @@ cp .env.example .env
 | `GITHUB_MODELS_ENDPOINT` | GitHub Models endpoint (default `https://models.github.ai/inference`) | Optional |
 | `GITHUB_MODELS_CHAT_MODEL` | Chat model id (default `openai/gpt-4o-mini`) | Optional |
 | `GITHUB_MODELS_EMBEDDING_MODEL` | Embedding model id (default `openai/text-embedding-3-small`) | Optional |
-| `CHROMA_PERSIST_DIR` | Local Chroma directory (default `./chroma_db`) | Optional |
+| `GROQ_API_KEY` | Groq API key | `LLM_PROVIDER=groq` |
+| `GROQ_ENDPOINT` | Groq endpoint (default `https://api.groq.com/openai/v1`) | Optional |
+| `GROQ_CHAT_MODEL` | Chat model id (default `llama-3.3-70b-versatile`) | Optional |
+| `POSTGRES_HOST` / `POSTGRES_PORT` | Postgres address (default `localhost:5432`) | Optional |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Postgres credentials (default `corporatebrain`) | Optional |
+| `MAX_RELEVANT_DISTANCE` | Retrieval relevance cutoff, cosine distance 0..2 (default `0.6`) | Optional |
 
 If `LLM_PROVIDER` and `EMBEDDING_PROVIDER` are both `github`, no Azure variables are read or
 validated at all — `AzureSettings` is never instantiated in that case.
@@ -79,13 +88,14 @@ validated at all — `AzureSettings` is never instantiated in that case.
 > `corporatebrain`. That's fine for local development, but change it before running against
 > any server reachable outside your machine.
 
-### Providers — Azure or GitHub Models
+### Providers — Azure, GitHub Models or Groq
 
 Chat and embeddings each have a selectable provider, so the app can run even when an
 Azure subscription has no quota to deploy or call a model:
 
-- Chat: `LLM_PROVIDER=azure` (`AzureChatOpenAI`, needs `AZURE_OPENAI_DEPLOYMENT_NAME`) or
-  `LLM_PROVIDER=github` (GitHub Models, needs `GITHUB_TOKEN`).
+- Chat: `LLM_PROVIDER=azure` (`AzureChatOpenAI`, needs `AZURE_OPENAI_DEPLOYMENT_NAME`),
+  `LLM_PROVIDER=github` (GitHub Models, needs `GITHUB_TOKEN`) or `LLM_PROVIDER=groq`
+  (Groq, needs `GROQ_API_KEY`; chat only — Groq has no embeddings support).
 - Embeddings: `EMBEDDING_PROVIDER=azure` (`AzureOpenAIEmbeddings`) or
   `EMBEDDING_PROVIDER=github` (GitHub Models, separate rate limit from Azure).
 
@@ -102,29 +112,35 @@ python scripts/test_azure_connection.py
 
 ## Running
 
+Start Postgres first (the `docker-compose.yaml` at the repo root uses the
+`pgvector/pgvector` image), then the app:
+
 ```bash
-streamlit run main.py
+docker compose up -d   # from the repo root
+streamlit run main.py  # from corporate_brain/
 ```
 
 The app opens at `http://localhost:8501`:
 
-- **Sidebar** — upload documents (PDF, DOCX, TXT, CSV) and see the list of indexed files.
-- **Chat** — ask questions; each answer shows its supporting sources and there is a button
-  to clear the conversation.
+- **Sidebar** — upload documents (PDF, DOCX, TXT, CSV, MD, XLSX), see the list of indexed
+  files with per-document delete, and manage saved chat sessions.
+- **Chat** — ask questions; each answer shows its numbered supporting sources and
+  follow-up suggestions.
 
-Indexed documents persist in `./chroma_db`, so they remain available after a restart.
+Indexed documents and chat sessions persist in Postgres, so they remain available after
+a restart.
 
 ## How it works
 
-| Step | LangChain component |
+| Step | Component |
 |---|---|
-| Read documents | `PyPDFLoader`, `Docx2txtLoader`, `TextLoader`, `CSVLoader` |
+| Read documents | `PyPDFLoader`, `Docx2txtLoader`, `TextLoader`, `CSVLoader`, Markdown and Excel loaders |
 | Chunking | `RecursiveCharacterTextSplitter` (`chunk_size=1000`, `chunk_overlap=200`) |
 | Embeddings | `AzureOpenAIEmbeddings` or `OpenAIEmbeddings` (GitHub Models), per `EMBEDDING_PROVIDER` |
-| Vector store | `Chroma` (collection `corporate_knowledge`) |
-| QA chain | `ConversationalRetrievalChain` |
-| Memory | `ConversationBufferMemory` (`return_messages=True`) |
-| LLM | `AzureChatOpenAI` or `ChatOpenAI` (GitHub Models), per `LLM_PROVIDER` |
+| Vector store | `langchain_postgres.PGVector` (collection `corporate_knowledge`) |
+| QA | `AnswerQuestion` use case: manual retrieval (`similarity_search_with_score`) + direct chat invocation with numbered citations |
+| Memory | Chat history persisted in Postgres (`chat_sessions` / `chat_messages` tables) |
+| LLM | `AzureChatOpenAI` or `ChatOpenAI` (GitHub Models / Groq), per `LLM_PROVIDER` |
 
 Each chunk stores `source` (file name), `page` (when available) and `chunk_index` in its
 metadata, which is what powers the source citations.

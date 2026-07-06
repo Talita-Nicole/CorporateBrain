@@ -13,9 +13,6 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# Vector store / database
-chroma_db/
-
 # Local user preferences (per-deployment, not for version control)
 app_settings.json
 

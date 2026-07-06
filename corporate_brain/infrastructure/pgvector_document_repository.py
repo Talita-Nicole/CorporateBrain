@@ -9,8 +9,8 @@ Distance note: PGVector's default space is **cosine** (distance = 1 - cosine
 similarity, range 0..2), unlike the old Chroma store whose default was L2.
 The relevance threshold that gates low-quality chunks out of the answer
 context (``AnswerQuestion.max_relevant_distance``) is calibrated for cosine
-distance and is env-overridable — see ``composition.build_dependencies`` and
-``MAX_RELEVANT_DISTANCE`` in ``answer_question``.
+distance and is env-overridable — see the composition root in
+``presentation/app.py`` and ``MAX_RELEVANT_DISTANCE`` in ``answer_question``.
 """
 
 import logging
@@ -18,7 +18,6 @@ from typing import Any
 
 import psycopg
 from langchain_core.documents import Document as LangChainDocument
-from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_postgres import PGVector
 
 from domain.interfaces.document_repository import DocumentRepository
@@ -60,9 +59,6 @@ class PgVectorDocumentRepository(DocumentRepository):
             return
         self._store.add_documents(chunks)
         logger.info("Indexed %d chunks into %s", len(chunks), self._collection_name)
-
-    def as_retriever(self, **search_kwargs: Any) -> VectorStoreRetriever:
-        return self._store.as_retriever(**search_kwargs)
 
     def similarity_search_with_score(
         self, query: str, k: int, filter: dict | None = None
